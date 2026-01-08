@@ -18,7 +18,6 @@ class ConnectedDevice {
   final String macAddress;
   final SerialPort port;
   final StreamSubscription? subscription;
-  // NEW: Store who this device is paired to (mainly for Sender)
   final String? pairedToMac;
 
   ConnectedDevice({
@@ -31,13 +30,12 @@ class ConnectedDevice {
   });
 }
 
-// Temporary object to pass data from Probe -> Register
 class ProbeResult {
   final String portName;
   final SerialPort port;
   final DeviceType type;
   final String mac;
-  final String? pairedTo; // NEW
+  final String? pairedTo;
 
   ProbeResult(this.portName, this.port, this.type, this.mac, {this.pairedTo});
 }
@@ -57,6 +55,10 @@ class DeviceManager extends _$DeviceManager {
   Timer? _scanTimer;
   final List<ConnectedDevice> _activeDevices = [];
   final Set<String> _checkedPorts = {};
+
+  // BUFFER & METRICS
+  String _serialBuffer = "";
+  int _packetsReceived = 0;
 
   @override
   List<ConnectedDevice> build() {
@@ -115,9 +117,7 @@ class DeviceManager extends _$DeviceManager {
 
     if (candidates.isEmpty) return;
 
-    print("CORE: Probing candidates: $candidates");
-
-    // 3. PARALLEL PROBING
+    // 3. PROBING
     final futures = candidates.map((portName) async {
       _checkedPorts.add(portName);
       return await _probePort(portName);
@@ -151,30 +151,21 @@ class DeviceManager extends _$DeviceManager {
     String buffer = "";
 
     try {
-      config.baudRate = 115200;
-      // Kickstart
-      config.dtr = 0;
-      config.rts = 0;
-      port.config = config;
-      await Future.delayed(const Duration(milliseconds: 100));
-
+      // HIGH SPEED CONFIGURATION (Must match ESP32)
+      config.baudRate = 921600;
       config.dtr = 1;
       config.rts = 1;
       port.config = config;
 
-      // Wait for Boot
-      await Future.delayed(const Duration(milliseconds: 2000));
-
+      await Future.delayed(const Duration(milliseconds: 1000));
       port.flush();
 
-      final reader = SerialPortReader(port, timeout: 2000);
+      final reader = SerialPortReader(port, timeout: 1500);
       port.write(Uint8List.fromList("AWEAR_IDENTIFY\n".codeUnits));
 
       await for (final data in reader.stream) {
         final chunk = String.fromCharCodes(data);
         buffer += chunk;
-
-        // print("CORE DEBUG $portName: $chunk"); // What saying?
 
         if (buffer.contains("{") && buffer.contains("}")) {
           final start = buffer.indexOf("{");
@@ -183,7 +174,6 @@ class DeviceManager extends _$DeviceManager {
             final jsonStr = buffer.substring(start, end + 1);
             try {
               final json = jsonDecode(jsonStr);
-
               if (json['device'] == 'AWEAR_RECEIVER') {
                 result = ProbeResult(
                   portName,
@@ -193,14 +183,12 @@ class DeviceManager extends _$DeviceManager {
                 );
                 break;
               } else if (json['device'] == 'AWEAR_SENDER') {
-                // NEW: Capture 'paired_to' from JSON
-                final pairedTo = json['paired_to'];
                 result = ProbeResult(
                   portName,
                   port,
                   DeviceType.sender,
                   json['mac'],
-                  pairedTo: pairedTo,
+                  pairedTo: json['paired_to'],
                 );
                 break;
               }
@@ -221,40 +209,17 @@ class DeviceManager extends _$DeviceManager {
     return result;
   }
 
-  // ConnectedDevice _registerDevice(ProbeResult info) {
-  //   final reader = SerialPortReader(info.port);
-  //   final sub = reader.stream.listen(
-  //     (data) {
-  //       final str = String.fromCharCodes(data);
-  //       _handleData(info.type, str);
-  //     },
-  //     onError: (err) {
-  //       print("CORE: Error on ${info.portName}: $err");
-  //       _handleStreamError(info.portName);
-  //     },
-  //     onDone: () {
-  //       _handleStreamError(info.portName);
-  //     },
-  //   );
-
-  //   return ConnectedDevice(
-  //     portName: info.portName,
-  //     type: info.type,
-  //     macAddress: info.mac,
-  //     port: info.port,
-  //     subscription: sub,
-  //     pairedToMac: info.pairedTo, // NEW: Pass it to the final object
-  //   );
-  // }
-
   ConnectedDevice _registerDevice(ProbeResult info) {
-    //  Start Listening
+    // Disable Flow Control signals for raw streaming
+    final config = info.port.config;
+    config.dtr = 0;
+    config.rts = 0;
+    info.port.config = config;
+    info.port.flush();
+
     final reader = SerialPortReader(info.port);
     final sub = reader.stream.listen(
       (data) {
-        // DEBUG: Confirm we are receiving bytes
-        // print("STREAM ${info.portName}: ${data.length} bytes");
-
         final str = String.fromCharCodes(data);
         _handleData(info.type, str);
       },
@@ -299,65 +264,62 @@ class DeviceManager extends _$DeviceManager {
   }
 
   void _handleData(DeviceType type, String data) {
-    // For Receiver, we expect JSON lines
     if (type == DeviceType.receiver) {
-      _parseAndEmit(data);
-    }
-    // For Sender (Direct USB), we expect PAIR confirmation
-    else if (type == DeviceType.sender) {
+      // Use Line Parser to avoid print() blockage
+      _parseLines(data);
+    } else if (type == DeviceType.sender) {
       if (data.contains("PAIRED_OK")) {
         ref.read(pairingStatusProvider.notifier).setSuccess();
       }
     }
   }
 
-  // void _parseAndEmit(String chunk) {
-  //   final lines = const LineSplitter().convert(chunk);
-  //   for (final line in lines) {
-  //     try {
-  //       if (line.contains('"sender":')) {
-  //         final json = jsonDecode(line);
-  //         final packet = SerialPacket.fromJson(json);
-  //         ref.read(packetStreamProvider.notifier).emit(packet);
-  //       }
-  //     } catch (_) {}
-  //   }
-  // }
+  // --- EFFICIENT LINE PARSER ---
+  void _parseLines(String chunk) {
+    _serialBuffer += chunk;
 
-  void _parseAndEmit(String chunk) {
-    final lines = const LineSplitter().convert(chunk);
-    for (final line in lines) {
-      // Filter for JSON-like lines
-      if (line.trim().startsWith('{')) {
-        try {
-          // print("PARSING: $line"); // Debug
+    // Safety Cap
+    if (_serialBuffer.length > 20000) {
+      print("CORE WARNING: Buffer Overflow. Clearing.");
+      _serialBuffer = "";
+    }
 
-          final json = jsonDecode(line);
-          final packet = SerialPacket.fromJson(json);
+    // Process all complete lines found
+    while (_serialBuffer.contains('\n')) {
+      final index = _serialBuffer.indexOf('\n');
+      final line = _serialBuffer.substring(0, index).trim();
+      _serialBuffer = _serialBuffer.substring(index + 1);
 
-          // SUCCESS!
-          print(
-            "CORE: Received Packet from ${packet.sender} RSSI: ${packet.rssi}",
-          );
-
-          ref.read(packetStreamProvider.notifier).emit(packet);
-        } catch (e) {
-          // Only print if it looked like a packet but failed
-          if (line.contains("sender")) {
-            print("CORE ERROR: Parse failed '$line' -> $e");
-          }
-        }
+      if (line.isNotEmpty) {
+        _attemptJsonParse(line);
       }
     }
   }
 
-  Future<void> pairSender(String receiverMac) async {
-    final senderDev = state
-        .where((d) => d.type == DeviceType.sender)
-        .firstOrNull;
-    if (senderDev != null) {
-      final cmd = "PAIR:$receiverMac\n";
-      senderDev.port.write(Uint8List.fromList(cmd.codeUnits));
+  void _attemptJsonParse(String jsonString) {
+    try {
+      final json = jsonDecode(jsonString);
+      final packet = SerialPacket.fromJson(json);
+
+      ref.read(packetStreamProvider.notifier).emit(packet);
+
+      // LOGGING STRATEGY:
+      // Only print every 50th packet.
+      // FIXED: Used 'packet.heartRate' instead of 'packet.hr'
+      _packetsReceived++;
+      if (_packetsReceived % 50 == 0) {
+        print(
+          "CORE STATUS: $_packetsReceived packets processed. Last: ${packet.sender} | HR: ${packet.heartRate}",
+        );
+      }
+    } catch (e) {
+      // Minimal error logging
     }
+  }
+
+  Future<void> pairSender(String receiverMac) async {
+    final senderDev = state.firstWhere((d) => d.type == DeviceType.sender);
+    final cmd = "PAIR:$receiverMac\n";
+    senderDev.port.write(Uint8List.fromList(cmd.codeUnits));
   }
 }
