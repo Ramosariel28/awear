@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../devices/screens/devices_screen.dart';
+import '../../devices/providers/sender_monitor_provider.dart'; // <--- IMPORT THIS
 import '../providers/user_provider.dart';
 import '../../dashboard/providers/selection_providers.dart';
 
@@ -11,14 +11,13 @@ class PairUserScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedUserId = ref.watch(selectedUserIdProvider);
-    final activeSenders = ref.watch(activeSendersProvider);
-    final users = ref.watch(userNotifierProvider).valueOrNull ?? [];
 
-    // Filter logic: Show devices that are NOT paired to ANY user
-    // (Or allow overriding? Usually unique pairing is better).
-    final pairedMacs = users.map((u) => u.pairedDeviceMacAddress).toSet();
-    final availableMacs = activeSenders.keys
-        .where((mac) => !pairedMacs.contains(mac))
+    // 1. USE THE PERSISTENT MONITOR
+    final allDevices = ref.watch(senderMonitorProvider);
+
+    // 2. Filter: Only show devices that are NOT assigned to a user
+    final availableDevices = allDevices
+        .where((device) => device.assignedUserId == null)
         .toList();
 
     return Container(
@@ -29,33 +28,38 @@ class PairUserScreen extends ConsumerWidget {
             title: const Text("Select Device"),
             backgroundColor: Colors.transparent,
             elevation: 0,
-            // ADDED: Cancel Button
             leading: IconButton(
               icon: const Icon(Icons.arrow_back, color: Colors.black),
               onPressed: () {
-                // Go back to Info
                 ref.read(isPairingUserProvider.notifier).set(false);
               },
             ),
           ),
           Expanded(
-            child: availableMacs.isEmpty
-                ? const Center(child: Text("No new devices active."))
+            child: availableDevices.isEmpty
+                ? const Center(child: Text("No available devices found."))
                 : ListView.builder(
-                    itemCount: availableMacs.length,
+                    itemCount: availableDevices.length,
                     itemBuilder: (context, index) {
-                      final mac = availableMacs[index];
+                      final device = availableDevices[index];
                       return ListTile(
-                        leading: const Icon(Icons.watch),
-                        title: Text(mac),
-                        subtitle: const Text("Active Now"),
+                        leading: Icon(
+                          Icons.watch,
+                          color: device.isOnline ? Colors.green : Colors.grey,
+                        ),
+                        title: Text(device.macAddress),
+                        // Show if it's Live or just Saved
+                        subtitle: Text(
+                          device.isOnline ? "Online Now" : "Offline (Saved)",
+                        ),
                         onTap: () {
                           if (selectedUserId != null) {
-                            // 1. Pair
                             ref
                                 .read(userNotifierProvider.notifier)
-                                .pairUserWithDevice(selectedUserId, mac);
-                            // 2. Return to Info Screen automatically
+                                .pairUserWithDevice(
+                                  selectedUserId,
+                                  device.macAddress,
+                                );
                             ref.read(isPairingUserProvider.notifier).set(false);
                           }
                         },

@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'package:isar/isar.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+import '../../../core/database/device_entity.dart';
+import '../../../core/providers.dart'; // For isarProvider
 import '../../../core/serial/serial_packet.dart';
 import '../../users/providers/user_provider.dart';
 import 'connection_provider.dart';
@@ -23,10 +26,9 @@ class SenderStatus {
     required this.isMoving,
     this.assignedUserId,
     this.assignedUserName,
-    this.isOnline = true,
+    this.isOnline = false,
   });
 
-  // Helper to copy object with new values (since fields are final)
   SenderStatus copyWith({
     int? rssi,
     DateTime? lastSeen,
@@ -47,40 +49,62 @@ class SenderStatus {
   }
 }
 
-@riverpod
+// 1. KEEP ALIVE: Prevents clearing when navigating away
+@Riverpod(keepAlive: true)
 class SenderMonitor extends _$SenderMonitor {
   @override
   List<SenderStatus> build() {
-    // 1. Listen to the stream for new packets
+    // 2. LOAD FROM DB: Initialize state with saved devices
+    final isar = ref.watch(isarProvider).valueOrNull;
+    List<SenderStatus> initialState = [];
+
+    if (isar != null) {
+      final savedDevices = isar.deviceEntitys.where().findAllSync();
+      initialState = savedDevices.map((e) {
+        // Check if this device is assigned to a user
+        final user = ref
+            .read(userNotifierProvider)
+            .valueOrNull
+            ?.where((u) => u.pairedDeviceMacAddress == e.macAddress)
+            .firstOrNull;
+
+        return SenderStatus(
+          macAddress: e.macAddress,
+          rssi: 0,
+          lastSeen: e.lastSeen,
+          isMoving: false,
+          isOnline: false, // Initially offline until we hear a packet
+          assignedUserId: user?.id,
+          assignedUserName: user != null
+              ? "${user.firstName} ${user.lastName}"
+              : null,
+        );
+      }).toList();
+    }
+
+    // 3. LISTEN TO PACKETS
     ref.listen(packetStreamProvider, (previous, next) {
       final packet = next.valueOrNull;
       if (packet != null) {
-        // DEBUG: Confirm the Monitor received the packet
-        print("MONITOR: Processing packet from ${packet.sender}");
-
         final users = ref.read(userNotifierProvider).valueOrNull ?? [];
         _processPacket(packet, users);
       }
     });
 
-    // 2. Set up a Timer to update UI
+    // 4. HEARTBEAT TIMER (Check Offline)
     final timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      checkDeviceStatus();
+      _checkDeviceStatus();
     });
+    ref.onDispose(() => timer.cancel());
 
-    // 3. Ensure the timer stops when this provider is no longer used
-    ref.onDispose(() {
-      timer.cancel();
-    });
-
-    return [];
+    return initialState;
   }
 
-  void _processPacket(SerialPacket packet, List<dynamic> users) {
-    // Use 'packet.sender' (matches your SerialPacket class)
+  Future<void> _processPacket(SerialPacket packet, List<dynamic> users) async {
     final currentMac = packet.sender;
+    final isar = ref.read(isarProvider).valueOrNull;
 
-    // Find Owner
+    // A. Find Owner
     int? userId;
     String? userName;
     final owner = users
@@ -92,58 +116,93 @@ class SenderMonitor extends _$SenderMonitor {
       userName = "${owner.firstName} ${owner.lastName}";
     }
 
-    // Check if device exists
+    // B. Update In-Memory State
     final index = state.indexWhere((s) => s.macAddress == currentMac);
 
     if (index >= 0) {
-      // UPDATE EXISTING: Use copyWith to update timestamp and mark Online
       final newState = [...state];
       newState[index] = newState[index].copyWith(
         rssi: packet.rssi,
         isMoving: packet.motion,
         lastSeen: DateTime.now(),
-        isOnline: true, // It just sent data, so it's online
-        // Update user info if it changed
+        isOnline: true,
         assignedUserId: userId,
         assignedUserName: userName,
       );
       state = newState;
     } else {
-      // ADD NEW
+      // New Device Found
       final newStatus = SenderStatus(
         macAddress: currentMac,
         rssi: packet.rssi,
         lastSeen: DateTime.now(),
         isMoving: packet.motion,
+        isOnline: true,
         assignedUserId: userId,
         assignedUserName: userName,
-        isOnline: true,
       );
       state = [...state, newStatus];
     }
+
+    // C. Save to Database (Persist Discovery)
+    if (isar != null) {
+      final existing = await isar.deviceEntitys
+          .filter()
+          .macAddressEqualTo(currentMac)
+          .findFirst();
+
+      await isar.writeTxn(() async {
+        if (existing != null) {
+          existing.lastSeen = DateTime.now();
+          await isar.deviceEntitys.put(existing);
+        } else {
+          final newEntity = DeviceEntity()
+            ..macAddress = currentMac
+            ..lastSeen = DateTime.now()
+            ..isPaired = (userId != null);
+          await isar.deviceEntitys.put(newEntity);
+        }
+      });
+    }
   }
 
-  void checkDeviceStatus() {
+  void _checkDeviceStatus() {
     final now = DateTime.now();
     bool hasChanges = false;
 
-    // Create a new list mapped from the old one
     final newState = state.map((device) {
       final difference = now.difference(device.lastSeen).inSeconds;
-
-      // If > 10 seconds and currently marked online, mark offline
       if (difference > 10 && device.isOnline) {
         hasChanges = true;
         return device.copyWith(isOnline: false);
       }
-      // Note: We don't automatically mark it online here;
-      // _processPacket handles that when data arrives.
       return device;
     }).toList();
 
-    // Only update state (triggering UI rebuild) if something actually changed
-    if (hasChanges) {
-      state = newState;
+    if (hasChanges) state = newState;
+  }
+
+  // DELETE DEVICE (Only if unpaired)
+  Future<void> deleteDevice(String macAddress) async {
+    final device = state.firstWhere((s) => s.macAddress == macAddress);
+
+    if (device.assignedUserId != null) {
+      // Prevent deletion if paired
+      return;
+    }
+
+    // 1. Remove from UI
+    state = state.where((s) => s.macAddress != macAddress).toList();
+
+    // 2. Remove from DB
+    final isar = ref.read(isarProvider).valueOrNull;
+    if (isar != null) {
+      await isar.writeTxn(() async {
+        await isar.deviceEntitys
+            .filter()
+            .macAddressEqualTo(macAddress)
+            .deleteAll();
+      });
     }
   }
 }
