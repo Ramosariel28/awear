@@ -5,7 +5,8 @@ import 'package:gap/gap.dart';
 
 import '../../dashboard/providers/selection_providers.dart';
 import '../../users/providers/user_provider.dart';
-import '../../vitals/providers/live_data_provider.dart';
+import '../providers/live_data_provider.dart';
+import '../../../core/database/vital_log_entity.dart';
 
 class VitalsDetailWidget extends ConsumerWidget {
   const VitalsDetailWidget({super.key});
@@ -16,28 +17,18 @@ class VitalsDetailWidget extends ConsumerWidget {
     final selectedVital = ref.watch(selectedVitalProvider);
     final userList = ref.watch(userNotifierProvider).valueOrNull ?? [];
 
-    // 1. Safety Checks FIRST
     if (selectedId == null) return const Center(child: Text("Select a User"));
     if (selectedVital == null) {
       return const Center(child: Text("Select a Vital"));
     }
 
-    // 2. Watch Live Data (Now safe because selectedId is not null)
-    final liveDataAsync = ref.watch(liveVitalStreamProvider(selectedId));
-
-    // Optional: You can debug print here to see if data arrives
-    liveDataAsync.when(
-      data: (packet) {
-        // Debug print or simple state update
-      },
-      loading: () {}, // No-op
-      error: (err, stack) {}, // No-op
-    );
-
+    // 1. Fetch History Data
+    // We use selectedId! because we checked for null above.
+    final historyAsync = ref.watch(vitalHistoryProvider(selectedId));
     final user = userList.where((u) => u.id == selectedId).firstOrNull;
+
     if (user == null) return const SizedBox();
 
-    // 3. Determine Color Scheme based on Vital
     Color color;
     switch (selectedVital) {
       case 'Heart Rate':
@@ -79,14 +70,17 @@ class VitalsDetailWidget extends ConsumerWidget {
                   ),
                 ],
               ),
-              IconButton(onPressed: () {}, icon: const Icon(Icons.more_vert)),
+              IconButton(
+                onPressed: () => ref.refresh(vitalHistoryProvider(selectedId)),
+                icon: const Icon(Icons.refresh),
+              ),
             ],
           ),
           const Gap(24),
 
           // --- Graph Section ---
           SizedBox(
-            height: 200,
+            height: 250,
             child: Card(
               elevation: 0,
               shape: RoundedRectangleBorder(
@@ -96,32 +90,12 @@ class VitalsDetailWidget extends ConsumerWidget {
               color: Colors.white,
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
-                child: LineChart(
-                  LineChartData(
-                    gridData: const FlGridData(show: false),
-                    titlesData: const FlTitlesData(show: false),
-                    borderData: FlBorderData(show: false),
-                    lineBarsData: [
-                      LineChartBarData(
-                        // Dummy Data for visual test
-                        spots: [
-                          const FlSpot(0, 3),
-                          const FlSpot(1, 1),
-                          const FlSpot(2, 4),
-                          const FlSpot(3, 2),
-                          const FlSpot(4, 5),
-                        ],
-                        isCurved: true,
-                        color: color,
-                        barWidth: 4,
-                        dotData: const FlDotData(show: false),
-                        belowBarData: BarAreaData(
-                          show: true,
-                          color: color.withValues(alpha: 0.2),
-                        ),
-                      ),
-                    ],
-                  ),
+                child: historyAsync.when(
+                  data: (logs) => _buildChart(logs, selectedVital, color),
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
+                  error: (e, _) =>
+                      Center(child: Text("Error loading graph: $e")),
                 ),
               ),
             ),
@@ -135,16 +109,28 @@ class VitalsDetailWidget extends ConsumerWidget {
           ),
           const Gap(8),
           Expanded(
-            child: ListView.separated(
-              itemCount: 10, // Dummy count
-              separatorBuilder: (_, _) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                return ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  title: Text("Value: ${90 + index}"),
-                  subtitle: Text("2025-01-05 10:${30 + index} AM"),
-                  leading: Icon(Icons.circle, size: 12, color: color),
+            child: historyAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(child: Text("Error: $e")),
+              data: (logs) {
+                if (logs.isEmpty) return const Text("No records found.");
+
+                return ListView.separated(
+                  itemCount: logs.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final log = logs[index];
+                    return ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      // Show REAL data from DB
+                      title: Text(
+                        "Value: ${log.hr?.toStringAsFixed(1) ?? '--'}",
+                      ),
+                      subtitle: Text(log.timestamp.toString().substring(0, 19)),
+                      leading: Icon(Icons.circle, size: 12, color: color),
+                    );
+                  },
                 );
               },
             ),
@@ -152,5 +138,66 @@ class VitalsDetailWidget extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Widget _buildChart(List<VitalLogEntity> logs, String vitalType, Color color) {
+    if (logs.isEmpty) return const Center(child: Text("No Data Available"));
+
+    // Sort by time ascending for the graph (logs come in desc)
+    final sortedLogs = logs.reversed.toList();
+
+    // Map to Spots
+    final spots = <FlSpot>[];
+    for (int i = 0; i < sortedLogs.length; i++) {
+      final val = _getValue(sortedLogs[i], vitalType);
+      if (val != null && val > 0) {
+        spots.add(FlSpot(i.toDouble(), val));
+      }
+    }
+
+    if (spots.isEmpty) return const Center(child: Text("Not enough data"));
+
+    return LineChart(
+      LineChartData(
+        gridData: const FlGridData(show: false),
+        titlesData: const FlTitlesData(show: false),
+        borderData: FlBorderData(show: false),
+        lineTouchData: LineTouchData(
+          touchTooltipData: LineTouchTooltipData(
+            getTooltipColor: (_) => Colors.blueGrey,
+          ),
+        ),
+        lineBarsData: [
+          LineChartBarData(
+            spots: spots,
+            isCurved: true,
+            color: color,
+            barWidth: 3,
+            dotData: const FlDotData(show: false),
+            belowBarData: BarAreaData(
+              show: true,
+              color: color.withValues(alpha: 0.2),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  double? _getValue(VitalLogEntity log, String vitalType) {
+    switch (vitalType) {
+      case 'Heart Rate':
+        return log.hr;
+      case 'Oxygen':
+        return log.oxy;
+      case 'Temp':
+        return log.temp;
+      case 'Resp. Rate':
+        return log.rr;
+      case 'Stress':
+        return log.stress;
+      default:
+        return 0;
+    }
   }
 }
