@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:isar/isar.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -9,20 +10,13 @@ part 'user_provider.g.dart';
 @riverpod
 class UserNotifier extends _$UserNotifier {
   @override
-  Future<List<UserEntity>> build() async {
-    // 1. Get the database instance
+  Stream<List<UserEntity>> build() async* {
+    // 1. Get the database
     final db = await ref.watch(isarProvider.future);
 
-    // 2. Listen to changes in the User collection automatically!
-    // This makes the UI update instantly when you add/delete a user.
-    final stream = db.userEntitys.where().watch(fireImmediately: true);
-
-    // 3. Bind the stream to the state
-    await for (final users in stream) {
-      state = AsyncValue.data(users);
-    }
-
-    return [];
+    // 2. Yield the stream directly
+    // This is the cleanest way to watch DB changes
+    yield* db.userEntitys.where().watch(fireImmediately: true);
   }
 
   /// Add a new User
@@ -129,25 +123,25 @@ class UserNotifier extends _$UserNotifier {
     });
   }
 
-  /// Pair User
-  Future<void> pairUserWithDevice(int userId, String macAddress) async {
-    final db = await ref.read(isarProvider.future);
-    await db.writeTxn(() async {
-      final user = await db.userEntitys.get(userId);
-      if (user != null) {
-        user.pairedDeviceMacAddress = macAddress;
-        await db.userEntitys.put(user);
-      }
-    });
-  }
-
-  /// Unpair User
+  // Unpair User
   Future<void> unpairUser(int userId) async {
     final db = await ref.read(isarProvider.future);
     await db.writeTxn(() async {
       final user = await db.userEntitys.get(userId);
       if (user != null) {
         user.pairedDeviceMacAddress = null;
+        await db.userEntitys.put(user);
+      }
+    });
+  }
+
+  // Pair User
+  Future<void> pairUserWithDevice(int userId, String macAddress) async {
+    final db = await ref.read(isarProvider.future);
+    await db.writeTxn(() async {
+      final user = await db.userEntitys.get(userId);
+      if (user != null) {
+        user.pairedDeviceMacAddress = macAddress;
         await db.userEntitys.put(user);
       }
     });

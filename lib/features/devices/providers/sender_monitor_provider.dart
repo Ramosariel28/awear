@@ -3,7 +3,7 @@ import 'package:isar/isar.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../core/database/device_entity.dart';
-import '../../../core/providers.dart'; // For isarProvider
+import '../../../core/providers.dart';
 import '../../../core/serial/serial_packet.dart';
 import '../../users/providers/user_provider.dart';
 import 'connection_provider.dart';
@@ -34,8 +34,8 @@ class SenderStatus {
     DateTime? lastSeen,
     bool? isMoving,
     bool? isOnline,
-    int? assignedUserId,
-    String? assignedUserName,
+    int? assignedUserId, // Nullable override
+    String? assignedUserName, // Nullable override
   }) {
     return SenderStatus(
       macAddress: macAddress,
@@ -43,44 +43,58 @@ class SenderStatus {
       lastSeen: lastSeen ?? this.lastSeen,
       isMoving: isMoving ?? this.isMoving,
       isOnline: isOnline ?? this.isOnline,
+      // Logic: If you pass null, it updates to null. If you don't pass it, it keeps old value.
+      // But we need a way to explicitly clear it.
+      // TRICK: We will pass the new value directly in the mapping logic below.
       assignedUserId: assignedUserId ?? this.assignedUserId,
       assignedUserName: assignedUserName ?? this.assignedUserName,
     );
   }
+
+  // Better CopyWith for explicit Null clearing
+  SenderStatus updatePairing({int? userId, String? userName}) {
+    return SenderStatus(
+      macAddress: macAddress,
+      rssi: rssi,
+      lastSeen: lastSeen,
+      isMoving: isMoving,
+      isOnline: isOnline,
+      assignedUserId: userId, // Direct assignment
+      assignedUserName: userName, // Direct assignment
+    );
+  }
 }
 
-// 1. KEEP ALIVE: Prevents clearing when navigating away
 @Riverpod(keepAlive: true)
 class SenderMonitor extends _$SenderMonitor {
   @override
   List<SenderStatus> build() {
-    // 2. LOAD FROM DB: Initialize state with saved devices
-    final isar = ref.watch(isarProvider).valueOrNull;
-    List<SenderStatus> initialState = [];
+    // 1. INITIAL LOAD
+    List<SenderStatus> initialList = [];
+    final isar = ref.read(isarProvider).valueOrNull;
 
     if (isar != null) {
       final savedDevices = isar.deviceEntitys.where().findAllSync();
-      initialState = savedDevices.map((e) {
-        // Check if this device is assigned to a user
-        final user = ref
-            .read(userNotifierProvider)
-            .valueOrNull
-            ?.where((u) => u.pairedDeviceMacAddress == e.macAddress)
-            .firstOrNull;
-
+      initialList = savedDevices.map((e) {
         return SenderStatus(
           macAddress: e.macAddress,
           rssi: 0,
           lastSeen: e.lastSeen,
           isMoving: false,
-          isOnline: false, // Initially offline until we hear a packet
-          assignedUserId: user?.id,
-          assignedUserName: user != null
-              ? "${user.firstName} ${user.lastName}"
-              : null,
+          isOnline: false,
+          assignedUserId: null,
+          assignedUserName: null,
         );
       }).toList();
     }
+
+    // 2. IMMEDIATE SYNC
+    final currentUsers = ref.read(userNotifierProvider).valueOrNull ?? [];
+    if (currentUsers.isNotEmpty && initialList.isNotEmpty) {
+      initialList = _applyPairingLogic(initialList, currentUsers);
+    }
+
+    state = initialList;
 
     // 3. LISTEN TO PACKETS
     ref.listen(packetStreamProvider, (previous, next) {
@@ -91,20 +105,53 @@ class SenderMonitor extends _$SenderMonitor {
       }
     });
 
-    // 4. HEARTBEAT TIMER (Check Offline)
+    // 4. LISTEN TO USERS (THE FIX)
+    ref.listen(userNotifierProvider, (previous, next) {
+      final users = next.valueOrNull;
+      // We process updates even if list is empty (e.g. all users deleted)
+      if (users != null) {
+        state = _applyPairingLogic(state, users);
+      }
+    });
+
+    // 5. HEARTBEAT
     final timer = Timer.periodic(const Duration(seconds: 1), (_) {
       _checkDeviceStatus();
     });
     ref.onDispose(() => timer.cancel());
 
-    return initialState;
+    return initialList;
+  }
+
+  // --- REUSABLE LOGIC ---
+  List<SenderStatus> _applyPairingLogic(
+    List<SenderStatus> devices,
+    List<dynamic> users,
+  ) {
+    return devices.map((device) {
+      // Find owner
+      final owner = users
+          .where((u) => u.pairedDeviceMacAddress == device.macAddress)
+          .firstOrNull;
+
+      final int? newOwnerId = owner?.id;
+      final String? newOwnerName = owner != null
+          ? "${owner.firstName} ${owner.lastName}"
+          : null;
+
+      // STRICT UPDATE: If the IDs don't match, we update (even if new is null)
+      if (device.assignedUserId != newOwnerId) {
+        // Use the specific update method to ensure nulls are respected
+        return device.updatePairing(userId: newOwnerId, userName: newOwnerName);
+      }
+      return device;
+    }).toList();
   }
 
   Future<void> _processPacket(SerialPacket packet, List<dynamic> users) async {
     final currentMac = packet.sender;
     final isar = ref.read(isarProvider).valueOrNull;
 
-    // A. Find Owner
     int? userId;
     String? userName;
     final owner = users
@@ -116,22 +163,25 @@ class SenderMonitor extends _$SenderMonitor {
       userName = "${owner.firstName} ${owner.lastName}";
     }
 
-    // B. Update In-Memory State
     final index = state.indexWhere((s) => s.macAddress == currentMac);
 
     if (index >= 0) {
+      // Update existing
+      final current = state[index];
       final newState = [...state];
-      newState[index] = newState[index].copyWith(
+      // Use updatePairing + standard copyWith logic
+      newState[index] = SenderStatus(
+        macAddress: current.macAddress,
         rssi: packet.rssi,
-        isMoving: packet.motion,
         lastSeen: DateTime.now(),
+        isMoving: packet.motion,
         isOnline: true,
         assignedUserId: userId,
         assignedUserName: userName,
       );
       state = newState;
     } else {
-      // New Device Found
+      // Add new
       final newStatus = SenderStatus(
         macAddress: currentMac,
         rssi: packet.rssi,
@@ -144,13 +194,11 @@ class SenderMonitor extends _$SenderMonitor {
       state = [...state, newStatus];
     }
 
-    // C. Save to Database (Persist Discovery)
     if (isar != null) {
       final existing = await isar.deviceEntitys
           .filter()
           .macAddressEqualTo(currentMac)
           .findFirst();
-
       await isar.writeTxn(() async {
         if (existing != null) {
           existing.lastSeen = DateTime.now();
@@ -174,7 +222,16 @@ class SenderMonitor extends _$SenderMonitor {
       final difference = now.difference(device.lastSeen).inSeconds;
       if (difference > 10 && device.isOnline) {
         hasChanges = true;
-        return device.copyWith(isOnline: false);
+        // Keep pairing info, just mark offline
+        return SenderStatus(
+          macAddress: device.macAddress,
+          rssi: device.rssi,
+          lastSeen: device.lastSeen,
+          isMoving: device.isMoving,
+          isOnline: false, // <--- Only change
+          assignedUserId: device.assignedUserId,
+          assignedUserName: device.assignedUserName,
+        );
       }
       return device;
     }).toList();
@@ -182,19 +239,23 @@ class SenderMonitor extends _$SenderMonitor {
     if (hasChanges) state = newState;
   }
 
-  // DELETE DEVICE (Only if unpaired)
   Future<void> deleteDevice(String macAddress) async {
-    final device = state.firstWhere((s) => s.macAddress == macAddress);
+    final device = state.firstWhere(
+      (s) => s.macAddress == macAddress,
+      orElse: () => SenderStatus(
+        macAddress: "",
+        rssi: 0,
+        lastSeen: DateTime.now(),
+        isMoving: false,
+      ),
+    );
 
     if (device.assignedUserId != null) {
-      // Prevent deletion if paired
       return;
     }
 
-    // 1. Remove from UI
     state = state.where((s) => s.macAddress != macAddress).toList();
 
-    // 2. Remove from DB
     final isar = ref.read(isarProvider).valueOrNull;
     if (isar != null) {
       await isar.writeTxn(() async {

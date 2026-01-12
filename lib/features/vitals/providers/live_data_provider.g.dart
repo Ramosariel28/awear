@@ -13,17 +13,17 @@ String _$selectedUserLiveVitalsHash() =>
 @ProviderFor(selectedUserLiveVitals)
 final selectedUserLiveVitalsProvider =
     AutoDisposeStreamProvider<SerialPacket>.internal(
-      selectedUserLiveVitals,
-      name: r'selectedUserLiveVitalsProvider',
-      debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
-          ? null
-          : _$selectedUserLiveVitalsHash,
-      dependencies: null,
-      allTransitiveDependencies: null,
-    );
+  selectedUserLiveVitals,
+  name: r'selectedUserLiveVitalsProvider',
+  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+      ? null
+      : _$selectedUserLiveVitalsHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
 
 typedef SelectedUserLiveVitalsRef = AutoDisposeStreamProviderRef<SerialPacket>;
-String _$liveVitalStreamHash() => r'd25ccd155c633483cf97f9e16f6d4eb782490d72';
+String _$liveVitalStreamHash() => r'257fbc78cbf049331d542333ace3e548440346c8';
 
 /// Copied from Dart SDK
 class _SystemHash {
@@ -56,15 +56,21 @@ class LiveVitalStreamFamily extends Family<AsyncValue<SerialPacket>> {
   const LiveVitalStreamFamily();
 
   /// See also [liveVitalStream].
-  LiveVitalStreamProvider call(int userId) {
-    return LiveVitalStreamProvider(userId);
+  LiveVitalStreamProvider call(
+    int userId,
+  ) {
+    return LiveVitalStreamProvider(
+      userId,
+    );
   }
 
   @override
   LiveVitalStreamProvider getProviderOverride(
     covariant LiveVitalStreamProvider provider,
   ) {
-    return call(provider.userId);
+    return call(
+      provider.userId,
+    );
   }
 
   static const Iterable<ProviderOrFamily>? _dependencies = null;
@@ -85,19 +91,24 @@ class LiveVitalStreamFamily extends Family<AsyncValue<SerialPacket>> {
 /// See also [liveVitalStream].
 class LiveVitalStreamProvider extends AutoDisposeStreamProvider<SerialPacket> {
   /// See also [liveVitalStream].
-  LiveVitalStreamProvider(int userId)
-    : this._internal(
-        (ref) => liveVitalStream(ref as LiveVitalStreamRef, userId),
-        from: liveVitalStreamProvider,
-        name: r'liveVitalStreamProvider',
-        debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
-            ? null
-            : _$liveVitalStreamHash,
-        dependencies: LiveVitalStreamFamily._dependencies,
-        allTransitiveDependencies:
-            LiveVitalStreamFamily._allTransitiveDependencies,
-        userId: userId,
-      );
+  LiveVitalStreamProvider(
+    int userId,
+  ) : this._internal(
+          (ref) => liveVitalStream(
+            ref as LiveVitalStreamRef,
+            userId,
+          ),
+          from: liveVitalStreamProvider,
+          name: r'liveVitalStreamProvider',
+          debugGetCreateSourceHash:
+              const bool.fromEnvironment('dart.vm.product')
+                  ? null
+                  : _$liveVitalStreamHash,
+          dependencies: LiveVitalStreamFamily._dependencies,
+          allTransitiveDependencies:
+              LiveVitalStreamFamily._allTransitiveDependencies,
+          userId: userId,
+        );
 
   LiveVitalStreamProvider._internal(
     super._createNotifier, {
@@ -161,6 +172,5 @@ class _LiveVitalStreamProviderElement
   @override
   int get userId => (origin as LiveVitalStreamProvider).userId;
 }
-
 // ignore_for_file: type=lint
 // ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member

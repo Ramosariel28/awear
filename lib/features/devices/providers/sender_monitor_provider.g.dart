@@ -6,7 +6,7 @@ part of 'sender_monitor_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$senderMonitorHash() => r'5653f69dc8e2351a215434cc15a1dd6c78525bab';
+String _$senderMonitorHash() => r'67915cb3184ffc8922ea933acd1cb445537057ea';
 
 /// See also [SenderMonitor].
 @ProviderFor(SenderMonitor)

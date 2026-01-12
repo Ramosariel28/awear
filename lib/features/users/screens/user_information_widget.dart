@@ -169,8 +169,10 @@ class UserInformationWidget extends ConsumerWidget {
             )
           else
             OutlinedButton.icon(
-              onPressed: () {
-                ref.read(userNotifierProvider.notifier).unpairUser(user.id);
+              onPressed: () async {
+                await ref
+                    .read(userNotifierProvider.notifier)
+                    .unpairUser(user.id);
               },
               icon: const Icon(Icons.link_off),
               label: const Text("Unpair User"),

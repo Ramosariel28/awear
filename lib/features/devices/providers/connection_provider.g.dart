@@ -22,7 +22,7 @@ final availablePortsProvider = AutoDisposeStreamProvider<List<String>>.internal(
   allTransitiveDependencies: null,
 );
 
-typedef AvailablePortsRef = Ref<List<String>>;
+typedef AvailablePortsRef = AutoDisposeStreamProviderRef<List<String>>;
 String _$deviceConnectionHash() => r'fe1dc80d525b83061a1b74dd551c1162eb2725a5';
 
 /// 2. Connection State Manager
@@ -31,14 +31,14 @@ String _$deviceConnectionHash() => r'fe1dc80d525b83061a1b74dd551c1162eb2725a5';
 @ProviderFor(DeviceConnection)
 final deviceConnectionProvider =
     NotifierProvider<DeviceConnection, String?>.internal(
-      DeviceConnection.new,
-      name: r'deviceConnectionProvider',
-      debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
-          ? null
-          : _$deviceConnectionHash,
-      dependencies: null,
-      allTransitiveDependencies: null,
-    );
+  DeviceConnection.new,
+  name: r'deviceConnectionProvider',
+  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+      ? null
+      : _$deviceConnectionHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
 
 typedef _$DeviceConnection = Notifier<String?>;
 String _$packetStreamHash() => r'c4dc465f90ac84cace4aefd4f7a73ea9750e78aa';
@@ -50,14 +50,13 @@ String _$packetStreamHash() => r'c4dc465f90ac84cace4aefd4f7a73ea9750e78aa';
 @ProviderFor(PacketStream)
 final packetStreamProvider =
     StreamNotifierProvider<PacketStream, SerialPacket>.internal(
-      PacketStream.new,
-      name: r'packetStreamProvider',
-      debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
-          ? null
-          : _$packetStreamHash,
-      dependencies: null,
-      allTransitiveDependencies: null,
-    );
+  PacketStream.new,
+  name: r'packetStreamProvider',
+  debugGetCreateSourceHash:
+      const bool.fromEnvironment('dart.vm.product') ? null : _$packetStreamHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
 
 typedef _$PacketStream = StreamNotifier<SerialPacket>;
 // ignore_for_file: type=lint

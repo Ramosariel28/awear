@@ -22,7 +22,7 @@ final pairingStatusProvider =
 );
 
 typedef _$PairingStatus = AutoDisposeNotifier<String?>;
-String _$deviceManagerHash() => r'6818b99a9bbc7179198f3704edef3951c45b2697';
+String _$deviceManagerHash() => r'009afc4332ca818ef61430c5c3d85427ad2555d1';
 
 /// See also [DeviceManager].
 @ProviderFor(DeviceManager)

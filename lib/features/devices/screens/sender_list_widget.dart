@@ -11,6 +11,8 @@ class SenderListWidget extends ConsumerStatefulWidget {
 }
 
 class _SenderListWidgetState extends ConsumerState<SenderListWidget> {
+  // Timer is no longer needed here as the Provider handles status checks internally
+
   @override
   Widget build(BuildContext context) {
     final senders = ref.watch(senderMonitorProvider);
@@ -23,7 +25,7 @@ class _SenderListWidgetState extends ConsumerState<SenderListWidget> {
             Icon(Icons.wifi_tethering_off, size: 48, color: Colors.grey[300]),
             const Gap(16),
             const Text(
-              "No active transmitters found",
+              "No transmitters detected",
               style: TextStyle(color: Colors.grey),
             ),
           ],
@@ -40,22 +42,21 @@ class _SenderListWidgetState extends ConsumerState<SenderListWidget> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                "Active Transmitters (${senders.length})",
+                "Transmitters (${senders.length})",
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
                 ),
               ),
-              // Legend
               const Row(
                 children: [
                   Icon(Icons.circle, size: 10, color: Colors.green),
                   Gap(4),
-                  Text("Assigned", style: TextStyle(fontSize: 12)),
+                  Text("Paired", style: TextStyle(fontSize: 12)),
                   Gap(12),
                   Icon(Icons.circle, size: 10, color: Colors.orange),
                   Gap(4),
-                  Text("Unassigned", style: TextStyle(fontSize: 12)),
+                  Text("New", style: TextStyle(fontSize: 12)),
                 ],
               ),
             ],
@@ -71,93 +72,118 @@ class _SenderListWidgetState extends ConsumerState<SenderListWidget> {
               final isAssigned = device.assignedUserId != null;
               final isOnline = device.isOnline;
 
-              return ListTile(
-                // Dim the row opacity if offline to give a visual cue
-                tileColor: isOnline ? null : Colors.grey[100],
-
-                leading: CircleAvatar(
-                  // Turn Grey if offline
-                  backgroundColor: !isOnline
-                      ? Colors.grey
-                      : (isAssigned ? Colors.green[100] : Colors.orange[100]),
-                  child: Icon(
-                    isAssigned ? Icons.person : Icons.question_mark,
-                    color: !isOnline
-                        ? Colors.white
-                        : (isAssigned ? Colors.green[700] : Colors.orange[700]),
+              return Opacity(
+                opacity: isOnline ? 1.0 : 0.5, // Fade out if offline
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: isAssigned
+                        ? Colors.green[100]
+                        : Colors.orange[100],
+                    child: Icon(
+                      isAssigned ? Icons.person : Icons.question_mark,
+                      color: isAssigned
+                          ? Colors.green[700]
+                          : Colors.orange[700],
+                    ),
                   ),
-                ),
-                title: Text(
-                  isAssigned ? device.assignedUserName! : "Unassigned Device",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    // Grey out text if offline
-                    color: isOnline
-                        ? (isAssigned ? Colors.black : Colors.grey[700])
-                        : Colors.grey,
+                  title: Text(
+                    isAssigned ? device.assignedUserName! : "Unassigned Device",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: isAssigned ? Colors.black : Colors.grey[700],
+                    ),
                   ),
-                ),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text("MAC: ${device.macAddress}"),
-                    // SHOW OFFLINE TEXT
-                    if (!isOnline)
-                      const Text(
-                        "OFFLINE - Signal Lost",
-                        style: TextStyle(
-                          color: Colors.red,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                  ],
-                ),
-                trailing: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    // Signal Strength Indicator
-                    if (isOnline)
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            device.rssi > -60
-                                ? Icons.signal_wifi_4_bar
-                                : device.rssi > -70
-                                ? Icons.signal_wifi_4_bar_lock
-                                : Icons.signal_wifi_0_bar,
-                            size: 16,
-                            color: Colors.grey,
+                  subtitle: Row(
+                    children: [
+                      Text("MAC: ${device.macAddress}"),
+                      const Gap(8),
+                      if (!isOnline)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 1,
                           ),
-                          const Gap(4),
-                          Text(
-                            "${device.rssi} dBm",
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[300],
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            "OFFLINE",
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
+                        ),
+                    ],
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Signal & Info Column
+                      Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                device.rssi > -60
+                                    ? Icons.signal_wifi_4_bar
+                                    : device.rssi > -70
+                                    ? Icons.signal_wifi_4_bar_lock
+                                    : Icons.signal_wifi_0_bar,
+                                size: 16,
+                                color: Colors.grey,
+                              ),
+                              const Gap(4),
+                              Text(
+                                "${device.rssi} dBm",
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const Gap(4),
+                          if (device.isMoving)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.blue[50],
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                "Moving",
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.blue,
+                                ),
+                              ),
+                            ),
                         ],
                       ),
-                    const Gap(4),
-                    if (device.isMoving)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
+
+                      // Delete Button (Only if NOT paired)
+                      if (!isAssigned)
+                        IconButton(
+                          icon: const Icon(
+                            Icons.delete_outline,
+                            color: Colors.red,
+                          ),
+                          onPressed: () {
+                            ref
+                                .read(senderMonitorProvider.notifier)
+                                .deleteDevice(device.macAddress);
+                          },
                         ),
-                        decoration: BoxDecoration(
-                          color: Colors.blue[50],
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Text(
-                          "Moving",
-                          style: TextStyle(fontSize: 10, color: Colors.blue),
-                        ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               );
             },
