@@ -1,4 +1,6 @@
 import 'package:awear/features/dashboard/screens/app_shell.dart';
+import 'package:awear/features/dashboard/screens/splash_screen.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -21,8 +23,8 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
         useMaterial3: true,
       ),
-      // home: const SplashScreen(),
-      home: const AppShell(),
+      home: const SplashScreen(),
+      //home: const AppShell(),
     );
   }
 }
