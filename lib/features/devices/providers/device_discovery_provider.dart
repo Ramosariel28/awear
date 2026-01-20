@@ -12,7 +12,6 @@ part 'device_discovery_provider.g.dart';
 
 enum DeviceType { receiver, sender, unknown }
 
-// 1. MUTABLE CLASS (The "Single Instance" Fix)
 class ConnectedDevice {
   final String portName;
   DeviceType type;
@@ -21,6 +20,10 @@ class ConnectedDevice {
   final SerialPortReader reader;
   StreamSubscription? subscription;
   String? pairedToMac;
+  
+  // Buffers
+  String identityBuffer = ""; 
+  String dataBuffer = ""; 
 
   ConnectedDevice({
     required this.portName,
@@ -47,29 +50,17 @@ class PairingStatus extends _$PairingStatus {
 class DeviceManager extends _$DeviceManager {
   Timer? _scanTimer;
   final List<ConnectedDevice> _activeDevices = [];
-
-  // STATE
   Set<String> _lastKnownPorts = {};
   final Set<String> _ignoredPorts = {};
 
-  // BUFFER & METRICS
-  String _serialBuffer = "";
   int _packetsReceived = 0;
 
   @override
   Future<List<ConnectedDevice>> build() async {
-    // print("CORE: Device Manager Started (Async Init)");
-
-    // Allow the Splash Screen to render
+    print("CORE: Device Manager Started");
     await Future.delayed(const Duration(milliseconds: 3000));
-
-    // 1. Load Blacklist
     await _loadBlacklist();
-
-    // 2. Perform Initial Scan & Wait for it
     await _checkForPortChanges(notify: false);
-
-    // 3. Start Periodic Timer for future checks
     _startScanning();
 
     ref.onDispose(() {
@@ -77,12 +68,10 @@ class DeviceManager extends _$DeviceManager {
       _closeAll();
     });
 
-    // 4. Return initial list
     return [..._activeDevices];
   }
 
   // --- PUBLIC HELPERS ---
-  // FIXED: Access state.value because state is now AsyncValue
   ConnectedDevice? get receiver =>
       state.value?.where((d) => d.type == DeviceType.receiver).firstOrNull;
 
@@ -90,7 +79,6 @@ class DeviceManager extends _$DeviceManager {
       state.value?.where((d) => d.type == DeviceType.sender).firstOrNull;
 
   // --- BLACKLIST LOGIC ---
-
   Future<void> _loadBlacklist() async {
     final prefs = await SharedPreferences.getInstance();
     final List<String>? saved = prefs.getStringList('ignored_serial_ports');
@@ -99,13 +87,10 @@ class DeviceManager extends _$DeviceManager {
     }
   }
 
-  Future<void> _handlePortFailure(
-    String portName, {
-    bool permanent = false,
-  }) async {
+  Future<void> _handlePortFailure(String portName, {bool permanent = false}) async {
     _ignoredPorts.add(portName);
     if (permanent) {
-      // print("CORE: Permanently blacklisting $portName.");
+      print("CORE: Permanently blacklisting $portName.");
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getStringList('ignored_serial_ports') ?? [];
       if (!saved.contains(portName)) {
@@ -116,18 +101,16 @@ class DeviceManager extends _$DeviceManager {
   }
 
   // --- SCANNING LOGIC ---
-
   void _closeAll() {
     for (final dev in _activeDevices) {
-      _forceDisconnect(dev);
+      try {
+        dev.subscription?.cancel();
+        dev.reader.close();
+        if (dev.port.isOpen) dev.port.close();
+      } catch (e) {}
     }
+    _activeDevices.clear();
   }
-
-  // Helper getters need to handle AsyncValue now
-  ConnectedDevice? get currentReceiver =>
-      state.value?.where((d) => d.type == DeviceType.receiver).firstOrNull;
-  ConnectedDevice? get currentSender =>
-      state.value?.where((d) => d.type == DeviceType.sender).firstOrNull;
 
   void _startScanning() {
     _scanTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
@@ -138,27 +121,21 @@ class DeviceManager extends _$DeviceManager {
   Future<void> _checkForPortChanges({bool notify = true}) async {
     final currentPortsList = SerialPort.availablePorts;
     final currentPorts = currentPortsList.toSet();
-
     final addedPorts = currentPorts.difference(_lastKnownPorts);
     final removedPorts = _lastKnownPorts.difference(currentPorts);
-
     _lastKnownPorts = currentPorts;
 
-    // Handle Unplug
     if (removedPorts.isNotEmpty) {
       for (final portName in removedPorts) {
         final activeDev = _activeDevices
             .where((d) => d.portName == portName)
             .firstOrNull;
-        if (activeDev != null) {
-          await _forceDisconnect(activeDev);
-        }
+        if (activeDev != null) await _forceDisconnect(activeDev);
         _ignoredPorts.remove(portName);
       }
       if (notify) _updateState();
     }
 
-    // Handle Plug In
     if (addedPorts.isNotEmpty) {
       for (final portName in addedPorts) {
         if (['COM1', 'COM2'].contains(portName)) {
@@ -166,29 +143,21 @@ class DeviceManager extends _$DeviceManager {
           continue;
         }
         if (_ignoredPorts.contains(portName)) continue;
-
-        // print("CORE: New port detected: $portName. Connecting...");
-
-        // Note: We don't await the full handshake here to avoid blocking UI for too long,
-        // but we initiate the connection.
+        print("CORE: New port detected: $portName. Connecting...");
         _connectAndIdentify(portName);
       }
-      // Note: We don't update state immediately here because _connectAndIdentify
-      // is async and will update state when it succeeds/fails.
     }
   }
 
   Future<void> _connectAndIdentify(String portName) async {
     final port = SerialPort(portName);
-
-    // 1. Attempt Open
     try {
       if (!port.openReadWrite()) {
-        _handlePortFailure(portName, permanent: false);
+        _handlePortFailure(portName);
         return;
       }
     } catch (e) {
-      _handlePortFailure(portName, permanent: false);
+      _handlePortFailure(portName);
       return;
     }
 
@@ -201,19 +170,15 @@ class DeviceManager extends _$DeviceManager {
       config.stopBits = 1;
       config.parity = SerialPortParity.none;
 
-      // 2. Attempt Config (Catch Error 87)
       try {
         port.config = config;
       } catch (e) {
         port.close();
-        // This is a hardware mismatch -> Permanent Blacklist
         _handlePortFailure(portName, permanent: true);
         return;
       }
 
       port.flush();
-
-      // 3. Create Connection
       final reader = SerialPortReader(port, timeout: 0);
 
       final device = ConnectedDevice(
@@ -225,9 +190,8 @@ class DeviceManager extends _$DeviceManager {
       );
 
       _activeDevices.add(device);
-      _updateState(); // Notify that we have a (tentative) device
+      _updateState();
 
-      // 4. Listen
       device.subscription = reader.stream.listen(
         (data) {
           final str = String.fromCharCodes(data);
@@ -235,63 +199,69 @@ class DeviceManager extends _$DeviceManager {
         },
         onError: (err) {
           if (!err.toString().contains("errno = 0")) {
-            // print("CORE: Error on $portName: $err");
+            print("CORE: Error on $portName: $err");
           }
           _forceDisconnect(device);
         },
         onDone: () => _forceDisconnect(device),
       );
 
-      // 5. Handshake
-      try {
-        port.write(Uint8List.fromList("AWEAR_IDENTIFY\n".codeUnits));
-      } catch (e) {
-        _forceDisconnect(device);
-        return;
-      }
+      // Handshake with DELAY for ESP32 boot
+      Future.delayed(const Duration(seconds: 2), () {
+        if (_activeDevices.contains(device) && device.type == DeviceType.unknown) {
+           try {
+             port.write(Uint8List.fromList("AWEAR_IDENTIFY\n".codeUnits));
+           } catch (e) {
+             _forceDisconnect(device);
+           }
+        }
+      });
 
-      // 6. Timeout Check
-      Future.delayed(const Duration(seconds: 4), () {
-        if (_activeDevices.contains(device) &&
-            device.type == DeviceType.unknown) {
-          // print("CORE: $portName did not identify. Closing.");
+      Future.delayed(const Duration(seconds: 6), () {
+        if (_activeDevices.contains(device) && device.type == DeviceType.unknown) {
           _forceDisconnect(device);
-          // Temporary blacklist (maybe it's just a different device)
-          _handlePortFailure(portName, permanent: false);
+          _handlePortFailure(portName);
         }
       });
     } catch (e) {
-      try {
-        port.close();
-      } catch (_) {}
-      _handlePortFailure(portName, permanent: false);
+      try { port.close(); } catch (_) {}
+      _handlePortFailure(portName);
     }
   }
 
   void _handleRawData(ConnectedDevice device, String chunk) {
-    // 1. IDENTITY CHECK
+    // 1. ALWAYS PARSE JSON (Handling Handshakes & Vitals)
+    // We do this first because the Identity is now inside a JSON packet.
+    _parseLines(device, chunk);
+
+    // 2. FALLBACK RAW STRING CHECK
+    // (Used for "PAIRED_OK" or legacy plain-text identification)
     if (device.type == DeviceType.unknown) {
-      if (chunk.contains("AWEAR_RECEIVER")) {
-        // print("CORE: SUCCESS! Recognized RECEIVER on ${device.portName}");
+      device.identityBuffer += chunk;
+      if (device.identityBuffer.length > 1024) {
+        device.identityBuffer = device.identityBuffer.substring(device.identityBuffer.length - 1024);
+      }
+      
+      // Legacy/Fallback ID check
+      if (device.identityBuffer.contains("AWEAR_RECEIVER")) {
         device.type = DeviceType.receiver;
         _updateState();
-      } else if (chunk.contains("AWEAR_SENDER")) {
-        // print("CORE: SUCCESS! Recognized SENDER on ${device.portName}");
+      } else if (device.identityBuffer.contains("AWEAR_SENDER")) {
         device.type = DeviceType.sender;
-        _updateState();
-      } else if (chunk.contains('"sender":') && chunk.contains('"rssi":')) {
-        // print("CORE: Implicitly recognized RECEIVER on ${device.portName}");
-        device.type = DeviceType.receiver;
         _updateState();
       }
     }
 
-    // 2. ROUTING
-    if (device.type == DeviceType.receiver) {
-      _parseLines(chunk);
-    } else if (device.type == DeviceType.sender) {
+    // 3. SPECIAL COMMAND RESPONSES
+    if (device.type == DeviceType.sender) {
+      // The Sender replies with raw text "PAIRED_OK" (not JSON)
       if (chunk.contains("PAIRED_OK")) {
         ref.read(pairingStatusProvider.notifier).setSuccess();
+        final currentReceiver = state.value?.where((d) => d.type == DeviceType.receiver).firstOrNull;
+        if (currentReceiver != null) {
+          device.pairedToMac = currentReceiver.macAddress;
+          _updateState();
+        }
       }
     }
   }
@@ -303,58 +273,87 @@ class DeviceManager extends _$DeviceManager {
       await dev.subscription?.cancel();
       dev.reader.close();
       if (dev.port.isOpen) dev.port.close();
-    } catch (e) {
-      // Ignore cleanup errors. The device might already be disconnected or the port closed.
-    }
+    } catch (e) {}
   }
 
   void _updateState() {
     state = AsyncValue.data([..._activeDevices]);
   }
 
-  void _parseLines(String chunk) {
-    _serialBuffer += chunk;
-    if (_serialBuffer.length > 50000) _serialBuffer = "";
+  void _parseLines(ConnectedDevice device, String chunk) {
+    device.dataBuffer += chunk;
+    if (device.dataBuffer.length > 50000) device.dataBuffer = "";
 
-    while (_serialBuffer.contains('\n')) {
-      final index = _serialBuffer.indexOf('\n');
-      final line = _serialBuffer.substring(0, index).trim();
-      _serialBuffer = _serialBuffer.substring(index + 1);
+    while (device.dataBuffer.contains('\n')) {
+      final index = device.dataBuffer.indexOf('\n');
+      final line = device.dataBuffer.substring(0, index).trim();
+      device.dataBuffer = device.dataBuffer.substring(index + 1);
 
       if (line.isNotEmpty) {
-        _attemptJsonParse(line);
+        _attemptJsonParse(device, line);
       }
     }
   }
 
-  void _attemptJsonParse(String jsonString) {
+  void _attemptJsonParse(ConnectedDevice device, String jsonString) {
     try {
       final json = jsonDecode(jsonString);
-      if (json.containsKey('device')) return;
+
+      // --- [FIX] HANDSHAKE PACKET HANDLING ---
+      // Expected: {"status":"Receiver Ready","device":"AWEAR_RECEIVER","mac":"..."}
+      if (json.containsKey('device') && json.containsKey('mac')) {
+        
+        // 1. Capture Identity
+        final devTypeStr = json['device'].toString();
+        if (devTypeStr == 'AWEAR_RECEIVER') {
+          device.type = DeviceType.receiver;
+        } else if (devTypeStr == 'AWEAR_SENDER') {
+          device.type = DeviceType.sender;
+        }
+
+        // 2. Capture MAC Address (CRITICAL for Pairing)
+        final mac = json['mac'].toString();
+        if (mac.isNotEmpty) {
+          print("CORE: Captured MAC for ${device.portName}: $mac");
+          device.macAddress = mac;
+        }
+
+        _updateState();
+        return; // Done. Do not try to parse as Vitals.
+      }
+
+      // --- VITALS PACKET HANDLING ---
+      // If it's the old format that has 'device' but NO 'mac', we skip it.
+      if (json.containsKey('device')) return; 
 
       final packet = SerialPacket.fromJson(json);
+
+      // (Redundant fallback: Capture MAC from vitals if missing)
+      if (packet.sender != null && device.macAddress == "Unknown") {
+        device.macAddress = packet.sender!;
+        _updateState();
+      }
 
       ref.read(packetStreamProvider.notifier).emit(packet);
 
       _packetsReceived++;
-      // if (_packetsReceived % 50 == 0) {
-      //   print(
-      //     "CORE STATUS: $_packetsReceived packets. HR: ${packet.heartRate} | RSSI: ${packet.rssi}",
-      //   );
-      // }
+      if (_packetsReceived % 50 == 0) {
+        print("CORE STATUS: $_packetsReceived packets.");
+      }
     } catch (e) {
-      // Ignore malformed JSON packets.
-      // This happens frequently with serial data streams.
+      // Ignore malformed JSON
     }
   }
 
   Future<void> pairSender(String receiverMac) async {
-    final senderDev = state.value
-        ?.where((d) => d.type == DeviceType.sender)
-        .firstOrNull;
+    final senderDev = state.value?.where((d) => d.type == DeviceType.sender).firstOrNull;
     if (senderDev != null) {
+      // Now receiverMac should be valid (e.g. 08:92:...) instead of Unknown
       final cmd = "PAIR:$receiverMac\n";
+      print("CORE: Sending pair command: $cmd");
       senderDev.port.write(Uint8List.fromList(cmd.codeUnits));
+    } else {
+      print("CORE: Cannot pair - Sender device not found.");
     }
   }
 }
