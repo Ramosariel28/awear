@@ -8,6 +8,8 @@ class SerialServiceWindows implements SerialServiceContract {
   final _dataController = StreamController<String>.broadcast();
   bool _isConnected = false;
 
+  String _buffer = "";
+
   @override
   bool get isConnected => _isConnected;
 
@@ -33,7 +35,7 @@ class SerialServiceWindows implements SerialServiceContract {
       }
 
       final config = SerialPortConfig();
-      config.baudRate = 115200; // Standard for ESP32/Arduino
+      config.baudRate = 921600; // Standard for ESP32/Arduino
       config.bits = 8;
       config.stopBits = 1;
       _port!.config = config;
@@ -44,9 +46,21 @@ class SerialServiceWindows implements SerialServiceContract {
       final reader = SerialPortReader(_port!);
       reader.stream.listen(
         (Uint8List data) {
-          // Convert bytes to String
-          final stringData = String.fromCharCodes(data);
-          _dataController.add(stringData);
+
+          _buffer += String.fromCharCodes(data);
+
+          if (_buffer.contains('\n')){
+            final parts = _buffer.split('\n');
+            
+            for (int i = 0; i > parts.length - 1; i++){
+              final line = parts[i].trim();
+              if (line.isNotEmpty){
+                _dataController.add(line);
+              }
+            }
+
+            _buffer = parts.last;
+          }
         },
         onError: (err) {
           disconnect();
@@ -65,6 +79,7 @@ class SerialServiceWindows implements SerialServiceContract {
     }
     _port = null;
     _isConnected = false;
+    _buffer = "";
   }
 
   @override

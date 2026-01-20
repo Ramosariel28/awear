@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart'; // For debugPrint
 import 'package:isar/isar.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -11,170 +12,158 @@ import '../../users/providers/user_provider.dart';
 
 part 'live_data_provider.g.dart';
 
-// --- HISTORY PROVIDER ---
+// --- DASHBOARD HELPER (User B Fix) ---
+@riverpod
+Stream<SerialPacket> selectedUserLiveVitals(SelectedUserLiveVitalsRef ref) {
+  final selectedId = ref.watch(selectedUserIdProvider);
+  if (selectedId == null) return const Stream.empty();
+
+  // Check pairing to ensure we don't show ghost data
+  final userAsync = ref.watch(userNotifierProvider);
+  final user = userAsync.valueOrNull?.where((u) => u.id == selectedId).firstOrNull;
+  
+  if (user == null || user.pairedDeviceMacAddress == null) {
+    return const Stream.empty();
+  }
+
+  // ignore: deprecated_member_use
+  return ref.watch(liveVitalStreamProvider(selectedId).stream);
+}
+
+// --- HISTORY FETCHING ---
 @riverpod
 Stream<List<VitalLogEntity>> vitalHistory(
   VitalHistoryRef ref,
   int userId,
 ) async* {
+  // Await the FUTURE to ensure Isar is ready before querying
   final isar = await ref.watch(isarProvider.future);
-  // Watch the database for changes so the list updates automatically
+  
   yield* isar.vitalLogEntitys
       .filter()
       .userIdEqualTo(userId)
       .sortByTimestampDesc()
-      .limit(50) // Limit to recent 50 records
+      .limit(50)
       .watch(fireImmediately: true);
 }
 
-// --- DASHBOARD HELPERS ---
-@riverpod
-Stream<SerialPacket> selectedUserLiveVitals(
-  SelectedUserLiveVitalsRef ref,
-) async* {
-  final selectedId = ref.watch(selectedUserIdProvider);
-  if (selectedId == null) return;
-
-  // Ensure we only proceed if User has a paired MAC
-  final userAsync = ref.watch(userNotifierProvider);
-  final user = userAsync.valueOrNull
-      ?.where((u) => u.id == selectedId)
-      .firstOrNull;
-  if (user?.pairedDeviceMacAddress == null) return;
-
-  // Use the underlying packet stream and filter it here directly
-  // to avoid the provider-to-provider .stream deprecation.
-  final packetStream = ref.watch(packetStreamProvider.notifier).stream;
-
-  await for (final packet in packetStream) {
-    if (packet.sender == user!.pairedDeviceMacAddress) {
-      yield packet;
-    }
-  }
-}
-
+// --- MAIN LOGIC ---
 @riverpod
 Stream<SerialPacket> liveVitalStream(
   LiveVitalStreamRef ref,
   int userId,
 ) async* {
-  // 1. Fetch the User to get Pairing Info (UNCHANGED)
+  // 1. Get User Info
   final userAsync = ref.watch(userNotifierProvider);
   final user = userAsync.valueOrNull?.where((u) => u.id == userId).firstOrNull;
 
-  // 2. PERSISTENCE STRATEGY (UNCHANGED)
-  final isar = ref.read(isarProvider).valueOrNull;
-  if (isar != null) {
-    final lastLog = await isar.vitalLogEntitys
-        .filter()
-        .userIdEqualTo(userId)
-        .sortByTimestampDesc()
-        .findFirst();
-
-    if (lastLog != null) {
-      yield SerialPacket(
-        sender: user?.pairedDeviceMacAddress ?? "HISTORY",
-        rssi: 0,
-        id: 0,
-        heartRate: lastLog.hr,
-        oxygen: lastLog.oxy,
-        respirationRate: lastLog.rr,
-        temperature: lastLog.temp,
-        stress: lastLog.stress,
-        motion: lastLog.motion ?? false,
-      );
-    }
-  }
-
-  // 3. PAIRING CHECK (UNCHANGED)
   if (user == null || user.pairedDeviceMacAddress == null) {
+    yield* Stream.empty();
     return;
   }
-
   final targetMac = user.pairedDeviceMacAddress!;
 
-  // 4. LIVE STREAM LISTENING (UPDATED)
+  // 2. Wait for Isar to be ready
+  final isar = await ref.watch(isarProvider.future);
+
+  // 3. Fetch initial history (Optional: show last known data)
+  final lastLog = await isar.vitalLogEntitys
+      .filter()
+      .userIdEqualTo(userId)
+      .sortByTimestampDesc()
+      .findFirst();
+
+  if (lastLog != null) {
+    yield SerialPacket(
+      sender: targetMac,
+      rssi: 0,
+      id: 0,
+      heartRate: lastLog.hr,
+      oxygen: lastLog.oxy,
+      respirationRate: lastLog.rr,
+      temperature: lastLog.temp,
+      stress: lastLog.stress,
+      motion: lastLog.motion ?? false,
+    );
+  }
+
+  // 4. Start Listening
   final packetStream = ref.watch(packetStreamProvider.notifier).stream;
 
-  // [NEW] Local variable to track the last time we ACTUALLY saved to the DB.
-  // This lives only as long as this specific stream connection is alive.
-  DateTime? lastSavedTimestamp;
+  // [NEW] Cache the actual PACKET data, not just the timestamp
+  SerialPacket? _lastSavedPacket;
+  DateTime? _lastSavedTime;
 
   await for (final packet in packetStream) {
-    // Only process packets from the paired device
     if (packet.sender == targetMac) {
-      final now = DateTime.now();
+      
+      bool isDuplicate = false;
 
-      // [NEW] THROTTLE CHECK
-      // If we saved a record less than 2 seconds ago, SKIP saving.
-      // We still 'yield' to update the UI immediately, but we protect the DB.
-      bool shouldSave = true;
-      if (lastSavedTimestamp != null &&
-          now.difference(lastSavedTimestamp).inMilliseconds < 2000) {
-        shouldSave = false;
+      // [LOGIC] Smart De-duplication
+      if (_lastSavedPacket != null && _lastSavedTime != null) {
+        final msSinceLastSave = DateTime.now().difference(_lastSavedTime!).inMilliseconds;
+        
+        // If the packet arrived within 1 second of the last one...
+        if (msSinceLastSave < 1000) {
+           // ...AND the critical values are EXACTLY the same...
+           if (packet.id == _lastSavedPacket!.id && // vital if you use IDs
+               packet.heartRate == _lastSavedPacket!.heartRate &&
+               packet.oxygen == _lastSavedPacket!.oxygen &&
+               packet.stress == _lastSavedPacket!.stress &&
+               packet.temperature == _lastSavedPacket!.temperature) {
+             
+             // ...then it is a Redundant Copy.
+             isDuplicate = true; 
+           }
+        }
       }
 
-      if (shouldSave) {
-        lastSavedTimestamp = now; // Update the lock immediately
-        _saveToHistory(ref, packet, userId);
+      if (!isDuplicate) {
+        // Update the Cache
+        _lastSavedPacket = packet;
+        _lastSavedTime = DateTime.now();
+        
+        // Save to DB
+        await _saveToHistory(isar, packet, userId);
       }
 
-      // Update UI (Always show the user that data is alive)
+      // ALWAYS yield to UI (so the graph/numbers feel responsive)
       yield packet;
     }
   }
 }
 
+// [FIX] Accept 'Isar' as an argument so we don't have to look it up again
 Future<void> _saveToHistory(
-  LiveVitalStreamRef ref,
+  Isar isar,
   SerialPacket packet,
   int userId,
 ) async {
   try {
-    final isar = ref.read(isarProvider).valueOrNull;
-    if (isar == null) return;
-
-    if ((packet.heartRate ?? 0) > 0 || (packet.oxygen ?? 0) > 0) {
-      // --- STEP 1: Fetch the most recent log ---
-      final lastLog = await isar.vitalLogEntitys
-          .filter()
-          .userIdEqualTo(userId)
-          .sortByTimestampDesc()
-          .findFirst();
-
-      // --- STEP 2: The Guard Clause ---
-      // If we have a last record...
-      if (lastLog != null) {
-        final timeDiff = DateTime.now().difference(lastLog.timestamp);
-
-        // ...and it was saved less than 2 seconds ago...
-        if (timeDiff.inSeconds < 2) {
-          // ...and the values are identical...
-          if (lastLog.hr == packet.heartRate &&
-              lastLog.oxy == packet.oxygen &&
-              lastLog.temp == packet.temperature) {
-            // ...STOP. This is a duplicate.
-            return;
-          }
-        }
-      }
-
-      // --- STEP 3: Proceed to Save ---
-      final log = VitalLogEntity()
-        ..userId = userId
-        ..timestamp = DateTime.now()
-        ..hr = packet.heartRate
-        ..oxy = packet.oxygen
-        ..rr = packet.respirationRate
-        ..temp = packet.temperature
-        ..stress = packet.stress
-        ..motion = packet.motion;
-
-      await isar.writeTxn(() async {
-        await isar.vitalLogEntitys.put(log);
-      });
+    // Filter out invalid/empty packets
+    if ((packet.heartRate ?? 0) <= 0 && (packet.oxygen ?? 0) <= 0) {
+      return;
     }
-  } catch (e) {
-    // Handle error
+
+    final log = VitalLogEntity()
+      ..userId = userId
+      ..timestamp = DateTime.now()
+      ..hr = packet.heartRate
+      ..oxy = packet.oxygen
+      ..rr = packet.respirationRate
+      ..temp = packet.temperature
+      ..stress = packet.stress
+      ..motion = packet.motion;
+
+    await isar.writeTxn(() async {
+      await isar.vitalLogEntitys.put(log);
+    });
+    
+    // Uncomment this if you want to see confirmation in the console
+    // debugPrint("SAVED: HR=${packet.heartRate} for User $userId");
+
+  } catch (e, stack) {
+    debugPrint("CRITICAL DB ERROR: $e");
+    debugPrint(stack.toString());
   }
 }

@@ -48,7 +48,7 @@ class SerialServiceAndroid implements SerialServiceContract {
     await _port!.setDTR(true);
     await _port!.setRTS(true);
     await _port!.setPortParameters(
-      115200,
+      921600,
       UsbPort.DATABITS_8,
       UsbPort.STOPBITS_1,
       UsbPort.PARITY_NONE,

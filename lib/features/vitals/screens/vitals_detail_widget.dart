@@ -120,12 +120,15 @@ class VitalsDetailWidget extends ConsumerWidget {
                   separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (context, index) {
                     final log = logs[index];
+                    final value =_getValue(log, selectedVital);
+
                     return ListTile(
                       dense: true,
                       contentPadding: EdgeInsets.zero,
                       // Show REAL data from DB
                       title: Text(
-                        "Value: ${log.hr?.toStringAsFixed(1) ?? '--'}",
+                        "Value: ${value?.toStringAsFixed(1) ?? '--'}",
+                        style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       subtitle: Text(log.timestamp.toString().substring(0, 19)),
                       leading: Icon(Icons.circle, size: 12, color: color),
