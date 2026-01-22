@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
 import '../../../core/database/user_entity.dart';
+import '../../../core/providers.dart'; // [REQUIRED] For syncServiceProvider
 import '../providers/user_provider.dart';
 
 class UserRegistrationDialog extends ConsumerStatefulWidget {
@@ -26,7 +27,6 @@ class _UserRegistrationDialogState
   final _heightCtrl = TextEditingController();
   final _weightCtrl = TextEditingController();
   final _medicalCtrl = TextEditingController();
-  // Removed _bloodTypeCtrl because we use a dropdown state variable now
 
   // --- DROPDOWN STATE ---
   String _selectedRole = 'Student';
@@ -42,7 +42,7 @@ class _UserRegistrationDialogState
   String? _selectedYear;
   String? _selectedSection;
 
-  // NEW: Blood Type State
+  // Blood Type State
   String? _selectedBloodType;
   final List<String> _bloodTypes = [
     'A+',
@@ -94,7 +94,6 @@ class _UserRegistrationDialogState
     _selectedRole = u.role;
     _dob = u.dateOfBirth;
 
-    // Prefill Blood Type (Ensure value exists in our list)
     if (u.bloodType != null && _bloodTypes.contains(u.bloodType)) {
       _selectedBloodType = u.bloodType;
     }
@@ -160,9 +159,15 @@ class _UserRegistrationDialogState
       final fullSectionName =
           "$_selectedStrand $_selectedYear-$_selectedSection";
       final notifier = ref.read(userNotifierProvider.notifier);
+      final syncService = ref.read(
+        syncServiceProvider,
+      ); // [NEW] Get Sync Service
 
       try {
         if (widget.userToEdit == null) {
+          // --- CREATE MODE ---
+
+          // 1. Add to Local Database (Generates 'happy-lion' password)
           await notifier.addUser(
             firstName: _firstNameCtrl.text,
             lastName: _lastNameCtrl.text,
@@ -173,10 +178,29 @@ class _UserRegistrationDialogState
             dob: _dob,
             height: double.tryParse(_heightCtrl.text),
             weight: double.tryParse(_weightCtrl.text),
-            bloodType: _selectedBloodType, // Changed from controller to state
+            bloodType: _selectedBloodType,
             medicalInfo: _medicalCtrl.text.isEmpty ? null : _medicalCtrl.text,
           );
+
+          // 2. [NEW] Fetch the user we just created to get the password
+          final allUsers = await ref.read(userNotifierProvider.future);
+          final createdUser = allUsers.firstWhere(
+            (u) => u.studentId == _studentIdCtrl.text,
+          );
+
+          // 3. [NEW] Register in Cloud (Firebase)
+          if (createdUser.generatedPassword != null) {
+            final firebaseId = await syncService.registerUserInCloud(
+              createdUser.studentId,
+              "${createdUser.firstName} ${createdUser.lastName}",
+              createdUser.generatedPassword!,
+            );
+
+            // 4. [NEW] Save Firebase ID back to Local DB
+            await notifier.updateFirebaseId(createdUser.id, firebaseId);
+          }
         } else {
+          // --- EDIT MODE ---
           await notifier.updateUser(
             id: widget.userToEdit!.id,
             firstName: _firstNameCtrl.text,
@@ -188,9 +212,9 @@ class _UserRegistrationDialogState
             dob: _dob,
             height: double.tryParse(_heightCtrl.text),
             weight: double.tryParse(_weightCtrl.text),
-            bloodType: _selectedBloodType, // Changed from controller to state
+            bloodType: _selectedBloodType,
             medicalInfo: _medicalCtrl.text.isEmpty ? null : _medicalCtrl.text,
-            currentMacAddress: widget.userToEdit!.pairedDeviceMacAddress,
+            // currentMacAddress is handled internally by provider now
           );
         }
 
@@ -198,7 +222,7 @@ class _UserRegistrationDialogState
           Navigator.of(context).pop();
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text("User saved successfully!"),
+              content: Text("User saved & synced successfully!"),
               backgroundColor: Colors.green,
             ),
           );
@@ -424,7 +448,7 @@ class _UserRegistrationDialogState
                   ],
                 ),
 
-                // --- NEW: Blood Type Dropdown ---
+                // Blood Type Dropdown
                 DropdownButtonFormField<String>(
                   initialValue: _selectedBloodType,
                   decoration: const InputDecoration(
@@ -438,7 +462,6 @@ class _UserRegistrationDialogState
                 ),
                 const Gap(12),
 
-                // --------------------------------
                 _buildTextField(
                   "Medical Notes",
                   _medicalCtrl,

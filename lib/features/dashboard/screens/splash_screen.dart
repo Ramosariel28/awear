@@ -1,7 +1,12 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../auth/screens/student_login_screen.dart';
+import '../../student/screens/student_dashboard_screen.dart';
 import '../../devices/providers/device_discovery_provider.dart';
 import 'app_shell.dart';
 
@@ -34,28 +39,43 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   }
 
   Future<void> _initApp() async {
-    // 1. Wait for BOTH the minimum timer AND the DeviceManager initialization
-    // using Future.wait.
-    await Future.wait([
-      // Minimum branding time (3 seconds)
-      Future.delayed(const Duration(seconds: 3)),
+    // 1. Minimum timer for logo animation
+    final tasks = <Future>[Future.delayed(const Duration(seconds: 3))];
 
-      // Wait for DeviceManager to finish build() (Scan + Blacklist load)
-      ref.read(deviceManagerProvider.future),
-    ]);
+    // 2. ONLY wait for Hardware Scanner if we are on Desktop
+    // Mobile does NOT need to scan for USB devices at startup
+    if (!kIsWeb &&
+        (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+      tasks.add(ref.read(deviceManagerProvider.future));
+    }
+
+    // 3. Wait for applicable tasks
+    await Future.wait(tasks);
 
     if (!mounted) return;
 
-    // 2. Navigate
-    Navigator.of(context).pushReplacement(
-      PageRouteBuilder(
-        pageBuilder: (_, _, _) => const AppShell(),
-        transitionsBuilder: (_, animation, _, child) {
-          return FadeTransition(opacity: animation, child: child);
-        },
-        transitionDuration: const Duration(milliseconds: 800),
-      ),
-    );
+    // 4. Navigation Logic
+    if (!kIsWeb &&
+        (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+      // Desktop -> Go to Admin Dashboard
+      Navigator.of(
+        context,
+      ).pushReplacement(MaterialPageRoute(builder: (_) => const AppShell()));
+    } else {
+      // Mobile -> Check if Student is logged in
+      final prefs = await SharedPreferences.getInstance();
+      final studentId = prefs.getString('student_id');
+
+      if (studentId != null) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const StudentDashboardScreen()),
+        );
+      } else {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const StudentLoginScreen()),
+        );
+      }
+    }
   }
 
   @override
@@ -74,7 +94,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // LOGO
               Container(
                 width: 120,
                 height: 120,
@@ -116,19 +135,26 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                 ),
               ),
               const SizedBox(height: 60),
-              const SizedBox(
-                width: 30,
-                height: 30,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.blueGrey,
+              // Only show "Initializing Hardware" text on Desktop
+              if (!kIsWeb &&
+                  (Platform.isWindows || Platform.isLinux || Platform.isMacOS))
+                Column(
+                  children: [
+                    const SizedBox(
+                      width: 30,
+                      height: 30,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.blueGrey,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      "Initializing Hardware...",
+                      style: TextStyle(color: Colors.grey[400], fontSize: 10),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                "Initializing Hardware...",
-                style: TextStyle(color: Colors.grey[400], fontSize: 10),
-              ),
             ],
           ),
         ),

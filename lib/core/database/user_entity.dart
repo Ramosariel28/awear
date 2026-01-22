@@ -24,6 +24,14 @@ class UserEntity {
   String? bloodType;
   String? medicalInfo;
 
+  // --- NEW FIELDS FOR MOBILE SYNC ---
+  @Index()
+  String? firebaseId; // Stores the Cloud ID
+
+  @Index()
+  String? generatedPassword; // Stores the "happy-lion" code
+  // ---------------------------------
+
   // Relationship: A user can have one active device paired (conceptually)
   // We will store the MacAddress string here for easy lookup
   @Index()

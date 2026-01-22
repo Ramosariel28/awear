@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../dashboard/providers/selection_providers.dart';
 import '../../dashboard/providers/view_mode_provider.dart';
@@ -75,10 +76,10 @@ class UserListWidget extends ConsumerWidget {
         Expanded(
           child: userState.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (err, stack) => Center(child: Text("Error: $err")),
+            error: (e, st) => Center(child: Text("Error: $e")),
             data: (users) {
               if (users.isEmpty) {
-                return const Center(child: Text("No users registered yet."));
+                return const Center(child: Text("No users found"));
               }
 
               return ListView.builder(
@@ -88,46 +89,98 @@ class UserListWidget extends ConsumerWidget {
                   final isSelected = user.id == selectedId;
 
                   return Card(
-                    elevation: isSelected ? 4 : 0,
-                    color: isSelected
-                        ? Theme.of(context).colorScheme.secondaryContainer
-                        : null,
                     margin: const EdgeInsets.symmetric(
-                      horizontal: 8,
+                      horizontal: 12,
                       vertical: 4,
                     ),
+                    elevation: isSelected ? 4 : 1,
+                    color: isSelected ? Colors.indigo[50] : Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: isSelected
+                          ? const BorderSide(color: Colors.indigo, width: 2)
+                          : BorderSide.none,
+                    ),
                     child: ListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
                       title: Text(
-                        "${user.lastName}, ${user.firstName}",
+                        "${user.firstName} ${user.lastName}",
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       subtitle: Text("${user.role} • ${user.yearLevel}"),
-                      trailing: Text(
-                        user.section,
-                        style: Theme.of(context).textTheme.bodySmall,
+
+                      // [NEW] Badge Widget
+                      trailing: StreamBuilder<QuerySnapshot>(
+                        stream: user.firebaseId == null
+                            ? const Stream.empty()
+                            : FirebaseFirestore.instance
+                                  .collection('users')
+                                  .doc(user.firebaseId)
+                                  .collection('messages')
+                                  .where(
+                                    'sender',
+                                    isEqualTo: 'student',
+                                  ) // From Student
+                                  .where('read', isEqualTo: false) // Unread
+                                  .snapshots(),
+                        builder: (context, snapshot) {
+                          int unreadCount = 0;
+                          if (snapshot.hasData) {
+                            unreadCount = snapshot.data!.docs.length;
+                          }
+
+                          return Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                user.section,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                              if (unreadCount > 0) ...[
+                                const Gap(8),
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.red,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Text(
+                                    unreadCount > 9
+                                        ? "9+"
+                                        : unreadCount.toString(),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          );
+                        },
                       ),
 
-                      // --- USER TAP ---
-                      onTap: () {
-                        // 1. Reset Column 3 States (Clean Slate)
-                        // Stop showing "Pair User" screen
-                        ref.read(isPairingUserProvider.notifier).set(false);
-                        // Stop showing "Graph" (Default to User Info)
-                        ref.read(selectedVitalProvider.notifier).clear();
+                      leading: CircleAvatar(
+                        backgroundColor: Colors.indigo[100],
+                        child: Text(
+                          user.firstName.isNotEmpty ? user.firstName[0] : "?",
+                        ),
+                      ),
 
-                        // 2. Select the User (Data)
+                      onTap: () {
+                        ref.read(isPairingUserProvider.notifier).set(false);
+                        ref.read(selectedVitalProvider.notifier).clear();
                         ref
                             .read(selectedUserIdProvider.notifier)
                             .select(user.id);
-
-                        // 3. Switch Mode (Layout)
-                        // This triggers the AppShell rebuild. By doing this LAST,
-                        // we ensure the other flags are already safe.
                         ref
                             .read(dashboardViewModeProvider.notifier)
                             .setMode(DashboardMode.users);
                       },
-                      leading: CircleAvatar(child: Text(user.firstName[0])),
                     ),
                   );
                 },

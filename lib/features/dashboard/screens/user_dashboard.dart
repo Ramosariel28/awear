@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../providers/selection_providers.dart';
 import '../../users/providers/user_provider.dart';
@@ -14,7 +15,7 @@ class UserDashboard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // 1. Watch the selected user ID
     final selectedId = ref.watch(selectedUserIdProvider);
-    // 2. Watch the selected Vital (Heart Rate, Oxygen, etc.)
+    // 2. Watch the selected Vital
     final selectedVital = ref.watch(selectedVitalProvider);
     // 3. Watch for live data
     final liveDataAsync = ref.watch(selectedUserLiveVitalsProvider);
@@ -55,7 +56,7 @@ class UserDashboard extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // --- Header Card ---
+              // --- Header Card (With Badge) ---
               _buildUserHeader(context, ref, user),
               const Gap(24),
 
@@ -82,64 +83,105 @@ class UserDashboard extends ConsumerWidget {
   }
 
   Widget _buildUserHeader(BuildContext context, WidgetRef ref, dynamic user) {
-    return Card(
-      elevation: 2,
-      child: InkWell(
-        onTap: () {
-          // Clear the selected vital -> Switch Col 3 to UserInformationWidget
-          ref.read(selectedVitalProvider.notifier).clear();
+    // Listen for unread messages
+    return StreamBuilder<QuerySnapshot>(
+      stream: user.firebaseId == null
+          ? const Stream.empty()
+          : FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.firebaseId)
+                .collection('messages')
+                .where('sender', isEqualTo: 'student') // From Student
+                .where('read', isEqualTo: false) // Unread
+                .snapshots(),
+      builder: (context, snapshot) {
+        bool hasUnread = false;
+        if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+          hasUnread = true;
+        }
 
-          // [SAFETY] Ensure we exit Chat mode and go back to Vitals/Info
-          // UPDATED: Uses the new 'UserDetailViewMode' provider
-          ref
-              .read(userDetailViewModeProvider.notifier)
-              .set(UserDetailView.vitals);
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 30,
-                backgroundColor: Theme.of(context).colorScheme.primary,
-                child: Text(
-                  user.firstName[0],
-                  style: const TextStyle(
-                    fontSize: 24,
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              const Gap(20),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "${user.lastName}, ${user.firstName}",
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const Gap(4),
-                  Row(
+        return Card(
+          elevation: 2,
+          clipBehavior:
+              Clip.antiAlias, // Ensures badge doesn't overflow weirdly
+          child: InkWell(
+            onTap: () {
+              ref.read(selectedVitalProvider.notifier).clear();
+              ref
+                  .read(userDetailViewModeProvider.notifier)
+                  .set(UserDetailView.vitals);
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: Stack(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Row(
                     children: [
-                      _buildBadge(context, user.role, Colors.blue),
-                      const Gap(8),
-                      _buildBadge(context, user.yearLevel, Colors.orange),
-                      const Gap(8),
-                      _buildBadge(context, user.section, Colors.green),
+                      CircleAvatar(
+                        radius: 30,
+                        backgroundColor: Theme.of(context).colorScheme.primary,
+                        child: Text(
+                          user.firstName.isNotEmpty ? user.firstName[0] : "?",
+                          style: const TextStyle(
+                            fontSize: 24,
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      const Gap(20),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "${user.lastName}, ${user.firstName}",
+                            style: Theme.of(context).textTheme.headlineSmall
+                                ?.copyWith(fontWeight: FontWeight.bold),
+                          ),
+                          const Gap(4),
+                          Row(
+                            children: [
+                              _buildBadge(context, user.role, Colors.blue),
+                              const Gap(8),
+                              // _buildBadge(
+                              //   context,
+                              //   user.yearLevel,
+                              //   Colors.orange,
+                              // ),
+                              // const Gap(8),
+                              _buildBadge(context, user.section, Colors.green),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const Spacer(),
+                      // Chevron retained as requested
+                      const Icon(Icons.chevron_right, color: Colors.grey),
                     ],
                   ),
-                ],
-              ),
-              const Spacer(),
-              const Icon(Icons.chevron_right, color: Colors.grey),
-            ],
+                ),
+
+                // --- THE RED DOT (Notification Badge) ---
+                if (hasUnread)
+                  Positioned(
+                    top: 12,
+                    right: 12,
+                    child: Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -227,26 +269,19 @@ class UserDashboard extends ConsumerWidget {
       itemBuilder: (context, index) {
         final v = vitals[index];
         final isEnabled = v['label'] != "Sleep";
-
-        // Check if this specific card is the one selected
         final isSelected = selectedVital == v['label'];
 
         return Card(
           color: isSelected
               ? Theme.of(context).colorScheme.primaryContainer
               : (isEnabled ? Colors.white : Colors.grey[100]),
-
           elevation: isSelected ? 4 : (isEnabled ? 2 : 0),
-
           child: InkWell(
             onTap: isEnabled
                 ? () {
                     ref
                         .read(selectedVitalProvider.notifier)
                         .select(v['label'] as String);
-
-                    // [SAFETY] When viewing graph, ensure we exit Chat mode
-                    // UPDATED: Uses the new 'UserDetailViewMode' provider
                     ref
                         .read(userDetailViewModeProvider.notifier)
                         .set(UserDetailView.vitals);

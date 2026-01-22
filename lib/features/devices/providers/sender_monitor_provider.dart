@@ -34,8 +34,8 @@ class SenderStatus {
     DateTime? lastSeen,
     bool? isMoving,
     bool? isOnline,
-    int? assignedUserId, // Nullable override
-    String? assignedUserName, // Nullable override
+    int? assignedUserId,
+    String? assignedUserName,
   }) {
     return SenderStatus(
       macAddress: macAddress,
@@ -43,15 +43,11 @@ class SenderStatus {
       lastSeen: lastSeen ?? this.lastSeen,
       isMoving: isMoving ?? this.isMoving,
       isOnline: isOnline ?? this.isOnline,
-      // Logic: If you pass null, it updates to null. If you don't pass it, it keeps old value.
-      // But we need a way to explicitly clear it.
-      // TRICK: We will pass the new value directly in the mapping logic below.
       assignedUserId: assignedUserId ?? this.assignedUserId,
       assignedUserName: assignedUserName ?? this.assignedUserName,
     );
   }
 
-  // Better CopyWith for explicit Null clearing
   SenderStatus updatePairing({int? userId, String? userName}) {
     return SenderStatus(
       macAddress: macAddress,
@@ -59,8 +55,8 @@ class SenderStatus {
       lastSeen: lastSeen,
       isMoving: isMoving,
       isOnline: isOnline,
-      assignedUserId: userId, // Direct assignment
-      assignedUserName: userName, // Direct assignment
+      assignedUserId: userId,
+      assignedUserName: userName,
     );
   }
 }
@@ -105,10 +101,9 @@ class SenderMonitor extends _$SenderMonitor {
       }
     });
 
-    // 4. LISTEN TO USERS (THE FIX)
+    // 4. LISTEN TO USERS
     ref.listen(userNotifierProvider, (previous, next) {
       final users = next.valueOrNull;
-      // We process updates even if list is empty (e.g. all users deleted)
       if (users != null) {
         state = _applyPairingLogic(state, users);
       }
@@ -129,7 +124,6 @@ class SenderMonitor extends _$SenderMonitor {
     List<dynamic> users,
   ) {
     return devices.map((device) {
-      // Find owner
       final owner = users
           .where((u) => u.pairedDeviceMacAddress == device.macAddress)
           .firstOrNull;
@@ -139,9 +133,7 @@ class SenderMonitor extends _$SenderMonitor {
           ? "${owner.firstName} ${owner.lastName}"
           : null;
 
-      // STRICT UPDATE: If the IDs don't match, we update (even if new is null)
       if (device.assignedUserId != newOwnerId) {
-        // Use the specific update method to ensure nulls are respected
         return device.updatePairing(userId: newOwnerId, userName: newOwnerName);
       }
       return device;
@@ -164,12 +156,19 @@ class SenderMonitor extends _$SenderMonitor {
     }
 
     final index = state.indexWhere((s) => s.macAddress == currentMac);
+    bool shouldSaveToDb = false; // Flag to control DB throttling
 
     if (index >= 0) {
       // Update existing
       final current = state[index];
+
+      // OPTIMIZATION: Only save to DB if >2 seconds passed since last save
+      // This prevents the "Application Hang" caused by writing 100x/second
+      if (DateTime.now().difference(current.lastSeen).inSeconds >= 2) {
+        shouldSaveToDb = true;
+      }
+
       final newState = [...state];
-      // Use updatePairing + standard copyWith logic
       newState[index] = SenderStatus(
         macAddress: current.macAddress,
         rssi: packet.rssi,
@@ -182,6 +181,7 @@ class SenderMonitor extends _$SenderMonitor {
       state = newState;
     } else {
       // Add new
+      shouldSaveToDb = true; // Always save new devices immediately
       final newStatus = SenderStatus(
         macAddress: currentMac,
         rssi: packet.rssi,
@@ -194,12 +194,16 @@ class SenderMonitor extends _$SenderMonitor {
       state = [...state, newStatus];
     }
 
-    if (isar != null) {
-      final existing = await isar.deviceEntitys
-          .filter()
-          .macAddressEqualTo(currentMac)
-          .findFirst();
+    // --- FIX: DB Logic with Crash Protection & Throttling ---
+    if (isar != null && shouldSaveToDb) {
+      // We wrap EVERYTHING in writeTxn to ensure Atomic operations.
+      // This prevents two packets from trying to create the same device at once.
       await isar.writeTxn(() async {
+        final existing = await isar.deviceEntitys
+            .filter()
+            .macAddressEqualTo(currentMac)
+            .findFirst();
+
         if (existing != null) {
           existing.lastSeen = DateTime.now();
           await isar.deviceEntitys.put(existing);
@@ -222,13 +226,12 @@ class SenderMonitor extends _$SenderMonitor {
       final difference = now.difference(device.lastSeen).inSeconds;
       if (difference > 10 && device.isOnline) {
         hasChanges = true;
-        // Keep pairing info, just mark offline
         return SenderStatus(
           macAddress: device.macAddress,
           rssi: device.rssi,
           lastSeen: device.lastSeen,
           isMoving: device.isMoving,
-          isOnline: false, // <--- Only change
+          isOnline: false,
           assignedUserId: device.assignedUserId,
           assignedUserName: device.assignedUserName,
         );

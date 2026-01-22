@@ -347,7 +347,7 @@ class DeviceManager extends _$DeviceManager {
       final packet = SerialPacket.fromJson(json);
 
       if (packet.sender != null && device.macAddress == "Unknown") {
-        device.macAddress = packet.sender!;
+        device.macAddress = packet.sender;
         _updateState();
       }
 

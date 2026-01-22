@@ -27,53 +27,63 @@ const UserEntitySchema = CollectionSchema(
       name: r'dateOfBirth',
       type: IsarType.dateTime,
     ),
-    r'firstName': PropertySchema(
+    r'firebaseId': PropertySchema(
       id: 2,
+      name: r'firebaseId',
+      type: IsarType.string,
+    ),
+    r'firstName': PropertySchema(
+      id: 3,
       name: r'firstName',
       type: IsarType.string,
     ),
+    r'generatedPassword': PropertySchema(
+      id: 4,
+      name: r'generatedPassword',
+      type: IsarType.string,
+    ),
     r'height': PropertySchema(
-      id: 3,
+      id: 5,
       name: r'height',
       type: IsarType.double,
     ),
     r'lastName': PropertySchema(
-      id: 4,
+      id: 6,
       name: r'lastName',
       type: IsarType.string,
     ),
     r'medicalInfo': PropertySchema(
-      id: 5,
+      id: 7,
       name: r'medicalInfo',
       type: IsarType.string,
     ),
     r'pairedDeviceMacAddress': PropertySchema(
-      id: 6,
+      id: 8,
       name: r'pairedDeviceMacAddress',
       type: IsarType.string,
     ),
     r'role': PropertySchema(
-      id: 7,
+      id: 9,
       name: r'role',
       type: IsarType.string,
     ),
     r'section': PropertySchema(
-      id: 8,
+      id: 10,
       name: r'section',
       type: IsarType.string,
     ),
     r'studentId': PropertySchema(
-      id: 9,
+      id: 11,
       name: r'studentId',
       type: IsarType.string,
     ),
     r'weight': PropertySchema(
-      id: 10,
+      id: 12,
       name: r'weight',
       type: IsarType.double,
     ),
     r'yearLevel': PropertySchema(
-      id: 11,
+      id: 13,
       name: r'yearLevel',
       type: IsarType.string,
     )
@@ -92,6 +102,32 @@ const UserEntitySchema = CollectionSchema(
       properties: [
         IndexPropertySchema(
           name: r'studentId',
+          type: IndexType.hash,
+          caseSensitive: true,
+        )
+      ],
+    ),
+    r'firebaseId': IndexSchema(
+      id: -334079192014120732,
+      name: r'firebaseId',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'firebaseId',
+          type: IndexType.hash,
+          caseSensitive: true,
+        )
+      ],
+    ),
+    r'generatedPassword': IndexSchema(
+      id: -4340827121545503780,
+      name: r'generatedPassword',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'generatedPassword',
           type: IndexType.hash,
           caseSensitive: true,
         )
@@ -131,7 +167,19 @@ int _userEntityEstimateSize(
       bytesCount += 3 + value.length * 3;
     }
   }
+  {
+    final value = object.firebaseId;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
   bytesCount += 3 + object.firstName.length * 3;
+  {
+    final value = object.generatedPassword;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
   bytesCount += 3 + object.lastName.length * 3;
   {
     final value = object.medicalInfo;
@@ -160,16 +208,18 @@ void _userEntitySerialize(
 ) {
   writer.writeString(offsets[0], object.bloodType);
   writer.writeDateTime(offsets[1], object.dateOfBirth);
-  writer.writeString(offsets[2], object.firstName);
-  writer.writeDouble(offsets[3], object.height);
-  writer.writeString(offsets[4], object.lastName);
-  writer.writeString(offsets[5], object.medicalInfo);
-  writer.writeString(offsets[6], object.pairedDeviceMacAddress);
-  writer.writeString(offsets[7], object.role);
-  writer.writeString(offsets[8], object.section);
-  writer.writeString(offsets[9], object.studentId);
-  writer.writeDouble(offsets[10], object.weight);
-  writer.writeString(offsets[11], object.yearLevel);
+  writer.writeString(offsets[2], object.firebaseId);
+  writer.writeString(offsets[3], object.firstName);
+  writer.writeString(offsets[4], object.generatedPassword);
+  writer.writeDouble(offsets[5], object.height);
+  writer.writeString(offsets[6], object.lastName);
+  writer.writeString(offsets[7], object.medicalInfo);
+  writer.writeString(offsets[8], object.pairedDeviceMacAddress);
+  writer.writeString(offsets[9], object.role);
+  writer.writeString(offsets[10], object.section);
+  writer.writeString(offsets[11], object.studentId);
+  writer.writeDouble(offsets[12], object.weight);
+  writer.writeString(offsets[13], object.yearLevel);
 }
 
 UserEntity _userEntityDeserialize(
@@ -181,17 +231,19 @@ UserEntity _userEntityDeserialize(
   final object = UserEntity();
   object.bloodType = reader.readStringOrNull(offsets[0]);
   object.dateOfBirth = reader.readDateTime(offsets[1]);
-  object.firstName = reader.readString(offsets[2]);
-  object.height = reader.readDoubleOrNull(offsets[3]);
+  object.firebaseId = reader.readStringOrNull(offsets[2]);
+  object.firstName = reader.readString(offsets[3]);
+  object.generatedPassword = reader.readStringOrNull(offsets[4]);
+  object.height = reader.readDoubleOrNull(offsets[5]);
   object.id = id;
-  object.lastName = reader.readString(offsets[4]);
-  object.medicalInfo = reader.readStringOrNull(offsets[5]);
-  object.pairedDeviceMacAddress = reader.readStringOrNull(offsets[6]);
-  object.role = reader.readString(offsets[7]);
-  object.section = reader.readString(offsets[8]);
-  object.studentId = reader.readString(offsets[9]);
-  object.weight = reader.readDoubleOrNull(offsets[10]);
-  object.yearLevel = reader.readString(offsets[11]);
+  object.lastName = reader.readString(offsets[6]);
+  object.medicalInfo = reader.readStringOrNull(offsets[7]);
+  object.pairedDeviceMacAddress = reader.readStringOrNull(offsets[8]);
+  object.role = reader.readString(offsets[9]);
+  object.section = reader.readString(offsets[10]);
+  object.studentId = reader.readString(offsets[11]);
+  object.weight = reader.readDoubleOrNull(offsets[12]);
+  object.yearLevel = reader.readString(offsets[13]);
   return object;
 }
 
@@ -207,24 +259,28 @@ P _userEntityDeserializeProp<P>(
     case 1:
       return (reader.readDateTime(offset)) as P;
     case 2:
-      return (reader.readString(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 3:
-      return (reader.readDoubleOrNull(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 4:
-      return (reader.readString(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 5:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readDoubleOrNull(offset)) as P;
     case 6:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 7:
-      return (reader.readString(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 8:
-      return (reader.readString(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 9:
       return (reader.readString(offset)) as P;
     case 10:
-      return (reader.readDoubleOrNull(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 11:
+      return (reader.readString(offset)) as P;
+    case 12:
+      return (reader.readDoubleOrNull(offset)) as P;
+    case 13:
       return (reader.readString(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -413,6 +469,139 @@ extension UserEntityQueryWhere
               indexName: r'studentId',
               lower: [],
               upper: [studentId],
+              includeUpper: false,
+            ));
+      }
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterWhereClause> firebaseIdIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'firebaseId',
+        value: [null],
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterWhereClause>
+      firebaseIdIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'firebaseId',
+        lower: [null],
+        includeLower: false,
+        upper: [],
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterWhereClause> firebaseIdEqualTo(
+      String? firebaseId) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'firebaseId',
+        value: [firebaseId],
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterWhereClause> firebaseIdNotEqualTo(
+      String? firebaseId) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'firebaseId',
+              lower: [],
+              upper: [firebaseId],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'firebaseId',
+              lower: [firebaseId],
+              includeLower: false,
+              upper: [],
+            ));
+      } else {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'firebaseId',
+              lower: [firebaseId],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'firebaseId',
+              lower: [],
+              upper: [firebaseId],
+              includeUpper: false,
+            ));
+      }
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterWhereClause>
+      generatedPasswordIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'generatedPassword',
+        value: [null],
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterWhereClause>
+      generatedPasswordIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'generatedPassword',
+        lower: [null],
+        includeLower: false,
+        upper: [],
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterWhereClause>
+      generatedPasswordEqualTo(String? generatedPassword) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'generatedPassword',
+        value: [generatedPassword],
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterWhereClause>
+      generatedPasswordNotEqualTo(String? generatedPassword) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'generatedPassword',
+              lower: [],
+              upper: [generatedPassword],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'generatedPassword',
+              lower: [generatedPassword],
+              includeLower: false,
+              upper: [],
+            ));
+      } else {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'generatedPassword',
+              lower: [generatedPassword],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'generatedPassword',
+              lower: [],
+              upper: [generatedPassword],
               includeUpper: false,
             ));
       }
@@ -697,6 +886,159 @@ extension UserEntityQueryFilter
     });
   }
 
+  QueryBuilder<UserEntity, UserEntity, QAfterFilterCondition>
+      firebaseIdIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'firebaseId',
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterFilterCondition>
+      firebaseIdIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'firebaseId',
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterFilterCondition> firebaseIdEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'firebaseId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterFilterCondition>
+      firebaseIdGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'firebaseId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterFilterCondition>
+      firebaseIdLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'firebaseId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterFilterCondition> firebaseIdBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'firebaseId',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterFilterCondition>
+      firebaseIdStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'firebaseId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterFilterCondition>
+      firebaseIdEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'firebaseId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterFilterCondition>
+      firebaseIdContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'firebaseId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterFilterCondition> firebaseIdMatches(
+      String pattern,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'firebaseId',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterFilterCondition>
+      firebaseIdIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'firebaseId',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterFilterCondition>
+      firebaseIdIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'firebaseId',
+        value: '',
+      ));
+    });
+  }
+
   QueryBuilder<UserEntity, UserEntity, QAfterFilterCondition> firstNameEqualTo(
     String value, {
     bool caseSensitive = true,
@@ -826,6 +1168,160 @@ extension UserEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.greaterThan(
         property: r'firstName',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterFilterCondition>
+      generatedPasswordIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'generatedPassword',
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterFilterCondition>
+      generatedPasswordIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'generatedPassword',
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterFilterCondition>
+      generatedPasswordEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'generatedPassword',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterFilterCondition>
+      generatedPasswordGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'generatedPassword',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterFilterCondition>
+      generatedPasswordLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'generatedPassword',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterFilterCondition>
+      generatedPasswordBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'generatedPassword',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterFilterCondition>
+      generatedPasswordStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'generatedPassword',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterFilterCondition>
+      generatedPasswordEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'generatedPassword',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterFilterCondition>
+      generatedPasswordContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'generatedPassword',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterFilterCondition>
+      generatedPasswordMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'generatedPassword',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterFilterCondition>
+      generatedPasswordIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'generatedPassword',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterFilterCondition>
+      generatedPasswordIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'generatedPassword',
         value: '',
       ));
     });
@@ -2049,6 +2545,18 @@ extension UserEntityQuerySortBy
     });
   }
 
+  QueryBuilder<UserEntity, UserEntity, QAfterSortBy> sortByFirebaseId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'firebaseId', Sort.asc);
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterSortBy> sortByFirebaseIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'firebaseId', Sort.desc);
+    });
+  }
+
   QueryBuilder<UserEntity, UserEntity, QAfterSortBy> sortByFirstName() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'firstName', Sort.asc);
@@ -2058,6 +2566,19 @@ extension UserEntityQuerySortBy
   QueryBuilder<UserEntity, UserEntity, QAfterSortBy> sortByFirstNameDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'firstName', Sort.desc);
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterSortBy> sortByGeneratedPassword() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'generatedPassword', Sort.asc);
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterSortBy>
+      sortByGeneratedPasswordDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'generatedPassword', Sort.desc);
     });
   }
 
@@ -2198,6 +2719,18 @@ extension UserEntityQuerySortThenBy
     });
   }
 
+  QueryBuilder<UserEntity, UserEntity, QAfterSortBy> thenByFirebaseId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'firebaseId', Sort.asc);
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterSortBy> thenByFirebaseIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'firebaseId', Sort.desc);
+    });
+  }
+
   QueryBuilder<UserEntity, UserEntity, QAfterSortBy> thenByFirstName() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'firstName', Sort.asc);
@@ -2207,6 +2740,19 @@ extension UserEntityQuerySortThenBy
   QueryBuilder<UserEntity, UserEntity, QAfterSortBy> thenByFirstNameDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'firstName', Sort.desc);
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterSortBy> thenByGeneratedPassword() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'generatedPassword', Sort.asc);
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QAfterSortBy>
+      thenByGeneratedPasswordDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'generatedPassword', Sort.desc);
     });
   }
 
@@ -2348,10 +2894,25 @@ extension UserEntityQueryWhereDistinct
     });
   }
 
+  QueryBuilder<UserEntity, UserEntity, QDistinct> distinctByFirebaseId(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'firebaseId', caseSensitive: caseSensitive);
+    });
+  }
+
   QueryBuilder<UserEntity, UserEntity, QDistinct> distinctByFirstName(
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'firstName', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<UserEntity, UserEntity, QDistinct> distinctByGeneratedPassword(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'generatedPassword',
+          caseSensitive: caseSensitive);
     });
   }
 
@@ -2438,9 +2999,22 @@ extension UserEntityQueryProperty
     });
   }
 
+  QueryBuilder<UserEntity, String?, QQueryOperations> firebaseIdProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'firebaseId');
+    });
+  }
+
   QueryBuilder<UserEntity, String, QQueryOperations> firstNameProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'firstName');
+    });
+  }
+
+  QueryBuilder<UserEntity, String?, QQueryOperations>
+      generatedPasswordProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'generatedPassword');
     });
   }
 

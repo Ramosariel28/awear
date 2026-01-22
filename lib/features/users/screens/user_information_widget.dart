@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
-import 'package:badges/badges.dart' as badges; // [NEW] Import Badges
+import 'package:badges/badges.dart' as badges;
+import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../core/providers.dart';
 import '../providers/user_provider.dart';
 import '../../dashboard/providers/selection_providers.dart';
-import '../../chat/providers/chat_providers.dart'; // [NEW] Import Chat Providers
 import 'user_registration_dialog.dart';
 
 class UserInformationWidget extends ConsumerWidget {
@@ -21,12 +22,6 @@ class UserInformationWidget extends ConsumerWidget {
 
     final user = userList.where((u) => u.id == selectedId).firstOrNull;
     if (user == null) return const Center(child: Text("User not found"));
-
-    // [NEW] Watch Unread Messages for the Badge
-    final unreadCountAsync = ref.watch(
-      unreadMessageCountProvider(user.id.toString()),
-    );
-    final unreadCount = unreadCountAsync.valueOrNull ?? 0;
 
     return Container(
       color: Colors.grey[50],
@@ -44,7 +39,6 @@ class UserInformationWidget extends ConsumerWidget {
                   fontWeight: FontWeight.w500,
                 ),
               ),
-              // --- Menu Button ---
               PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert),
                 onSelected: (value) {
@@ -53,6 +47,8 @@ class UserInformationWidget extends ConsumerWidget {
                       context: context,
                       builder: (_) => UserRegistrationDialog(userToEdit: user),
                     );
+                  } else if (value == 'clear_history') {
+                    _showClearHistoryConfirm(context, ref, user);
                   } else if (value == 'delete') {
                     _showDeleteConfirm(context, ref, user);
                   }
@@ -65,6 +61,17 @@ class UserInformationWidget extends ConsumerWidget {
                         Icon(Icons.edit, color: Colors.blue),
                         Gap(10),
                         Text("Edit Info"),
+                      ],
+                    ),
+                  ),
+                  // [NEW] Clear History Option
+                  const PopupMenuItem(
+                    value: 'clear_history',
+                    child: Row(
+                      children: [
+                        Icon(Icons.history, color: Colors.orange),
+                        Gap(10),
+                        Text("Clear Vital History"),
                       ],
                     ),
                   ),
@@ -130,84 +137,111 @@ class UserInformationWidget extends ConsumerWidget {
           const Divider(),
           const Gap(10),
 
-          Row(
-            children: [
-              // 1. Chat Button (Left Side)
-              Expanded(
-                child: badges.Badge(
-                  position: badges.BadgePosition.topEnd(top: -12, end: -5),
-                  showBadge: unreadCount > 0,
-                  badgeContent: Text(
-                    unreadCount.toString(),
-                    style: const TextStyle(color: Colors.white, fontSize: 12),
-                  ),
-                  child: SizedBox(
-                    height: 50, // Force same height
-                    width: double.infinity, // Fill Expanded
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.indigo,
-                        foregroundColor: Colors.white,
-                        padding: EdgeInsets.zero, // Compact for side-by-side
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+          // StreamBuilder to get real-time unread count
+          StreamBuilder<QuerySnapshot>(
+            stream: user.firebaseId == null
+                ? const Stream.empty()
+                : FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(user.firebaseId)
+                      .collection('messages')
+                      .where('sender', isEqualTo: 'student')
+                      .where('read', isEqualTo: false)
+                      .snapshots(),
+            builder: (context, snapshot) {
+              int unreadCount = 0;
+              if (snapshot.hasData) {
+                unreadCount = snapshot.data!.docs.length;
+              }
+
+              return Row(
+                children: [
+                  // 1. Chat Button with Badge
+                  Expanded(
+                    child: badges.Badge(
+                      position: badges.BadgePosition.topEnd(top: -10, end: -5),
+                      showBadge: unreadCount > 0,
+                      badgeContent: Text(
+                        unreadCount.toString(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
                         ),
                       ),
-                      icon: const Icon(Icons.chat_bubble_outline),
-                      label: const Text("Chat"),
-                      onPressed: () {
-                        ref
-                            .read(userDetailViewModeProvider.notifier)
-                            .set(UserDetailView.chat);
-                      },
+                      child: SizedBox(
+                        height: 50,
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.indigo,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          icon: const Icon(Icons.chat_bubble_outline),
+                          label: const Text("Chat"),
+                          onPressed: () {
+                            if (user.firebaseId != null) {
+                              ref
+                                  .read(syncServiceProvider)
+                                  .markStudentMessagesAsRead(user.firebaseId!);
+                            }
+                            ref
+                                .read(userDetailViewModeProvider.notifier)
+                                .set(UserDetailView.chat);
+                          },
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
 
-              const Gap(12), // Space between buttons
-              // 2. Pair/Unpair Button (Right Side)
-              Expanded(
-                child: SizedBox(
-                  height: 50, // Force same height
-                  child: user.pairedDeviceMacAddress == null
-                      ? ElevatedButton.icon(
-                          onPressed: () {
-                            ref.read(isPairingUserProvider.notifier).set(true);
-                          },
-                          icon: const Icon(Icons.link),
-                          label: const Text("Pair"),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Theme.of(
-                              context,
-                            ).colorScheme.primary,
-                            foregroundColor: Colors.white,
-                            padding: EdgeInsets.zero,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
+                  const Gap(12),
+
+                  // 2. Pair/Unpair Button
+                  Expanded(
+                    child: SizedBox(
+                      height: 50,
+                      child: user.pairedDeviceMacAddress == null
+                          ? ElevatedButton.icon(
+                              onPressed: () {
+                                ref
+                                    .read(isPairingUserProvider.notifier)
+                                    .set(true);
+                              },
+                              icon: const Icon(Icons.link),
+                              label: const Text("Pair"),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.primary,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                            )
+                          : OutlinedButton.icon(
+                              onPressed: () async {
+                                await ref
+                                    .read(userNotifierProvider.notifier)
+                                    .unpairUser(user.id);
+                              },
+                              icon: const Icon(Icons.link_off),
+                              label: const Text("Unpair"),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.red,
+                                side: const BorderSide(color: Colors.red),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
                             ),
-                          ),
-                        )
-                      : OutlinedButton.icon(
-                          onPressed: () async {
-                            await ref
-                                .read(userNotifierProvider.notifier)
-                                .unpairUser(user.id);
-                          },
-                          icon: const Icon(Icons.link_off),
-                          label: const Text("Unpair"),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.red,
-                            side: const BorderSide(color: Colors.red),
-                            padding: EdgeInsets.zero,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                ),
-              ),
-            ],
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -231,6 +265,39 @@ class UserInformationWidget extends ConsumerWidget {
             ),
           ),
           Expanded(child: Text(value, style: const TextStyle(fontSize: 16))),
+        ],
+      ),
+    );
+  }
+
+  // [NEW] Clear History Confirmation Dialog
+  void _showClearHistoryConfirm(
+    BuildContext context,
+    WidgetRef ref,
+    dynamic user,
+  ) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Clear Vital History?"),
+        content: Text(
+          "This will permanently delete all recorded vital logs for ${user.firstName} ${user.lastName}. This action cannot be undone.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () {
+              ref.read(userNotifierProvider.notifier).clearUserHistory(user.id);
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Vital history cleared")),
+              );
+            },
+            child: const Text("Clear All", style: TextStyle(color: Colors.red)),
+          ),
         ],
       ),
     );

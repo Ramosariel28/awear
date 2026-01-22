@@ -8,11 +8,18 @@ import '../../users/providers/user_provider.dart';
 import '../providers/live_data_provider.dart';
 import '../../../core/database/vital_log_entity.dart';
 
-class VitalsDetailWidget extends ConsumerWidget {
+class VitalsDetailWidget extends ConsumerStatefulWidget {
   const VitalsDetailWidget({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<VitalsDetailWidget> createState() => _VitalsDetailWidgetState();
+}
+
+class _VitalsDetailWidgetState extends ConsumerState<VitalsDetailWidget> {
+  bool _hideMotionData = true;
+
+  @override
+  Widget build(BuildContext context) {
     final selectedId = ref.watch(selectedUserIdProvider);
     final selectedVital = ref.watch(selectedVitalProvider);
     final userList = ref.watch(userNotifierProvider).valueOrNull ?? [];
@@ -22,8 +29,6 @@ class VitalsDetailWidget extends ConsumerWidget {
       return const Center(child: Text("Select a Vital"));
     }
 
-    // 1. Fetch History Data
-    // We use selectedId! because we checked for null above.
     final historyAsync = ref.watch(vitalHistoryProvider(selectedId));
     final user = userList.where((u) => u.id == selectedId).firstOrNull;
 
@@ -70,9 +75,24 @@ class VitalsDetailWidget extends ConsumerWidget {
                   ),
                 ],
               ),
-              IconButton(
-                onPressed: () => ref.refresh(vitalHistoryProvider(selectedId)),
-                icon: const Icon(Icons.refresh),
+              Row(
+                children: [
+                  Text(
+                    "Filter Motion:",
+                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                  ),
+                  Switch(
+                    value: _hideMotionData,
+                    activeThumbColor: color,
+                    onChanged: (val) => setState(() => _hideMotionData = val),
+                  ),
+                  const Gap(8),
+                  IconButton(
+                    onPressed: () =>
+                        ref.refresh(vitalHistoryProvider(selectedId)),
+                    icon: const Icon(Icons.refresh),
+                  ),
+                ],
               ),
             ],
           ),
@@ -120,18 +140,40 @@ class VitalsDetailWidget extends ConsumerWidget {
                   separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (context, index) {
                     final log = logs[index];
-                    final value =_getValue(log, selectedVital);
+                    final value = _getValue(log, selectedVital);
+
+                    // [FIX] Handle nullable boolean safely
+                    final isMoving = log.motion ?? false;
 
                     return ListTile(
                       dense: true,
                       contentPadding: EdgeInsets.zero,
-                      // Show REAL data from DB
-                      title: Text(
-                        "Value: ${value?.toStringAsFixed(1) ?? '--'}",
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      tileColor: isMoving ? Colors.grey[100] : null,
+                      title: Row(
+                        children: [
+                          Text(
+                            "Value: ${value?.toStringAsFixed(1) ?? '--'}",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              decoration: isMoving
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                              color: isMoving ? Colors.grey : Colors.black,
+                            ),
+                          ),
+                          if (isMoving)
+                            const Text(
+                              " (Motion)",
+                              style: TextStyle(fontSize: 10, color: Colors.red),
+                            ),
+                        ],
                       ),
                       subtitle: Text(log.timestamp.toString().substring(0, 19)),
-                      leading: Icon(Icons.circle, size: 12, color: color),
+                      leading: Icon(
+                        isMoving ? Icons.directions_run : Icons.circle,
+                        size: 12,
+                        color: isMoving ? Colors.grey : color,
+                      ),
                     );
                   },
                 );
@@ -146,19 +188,26 @@ class VitalsDetailWidget extends ConsumerWidget {
   Widget _buildChart(List<VitalLogEntity> logs, String vitalType, Color color) {
     if (logs.isEmpty) return const Center(child: Text("No Data Available"));
 
-    // Sort by time ascending for the graph (logs come in desc)
     final sortedLogs = logs.reversed.toList();
-
-    // Map to Spots
     final spots = <FlSpot>[];
+
     for (int i = 0; i < sortedLogs.length; i++) {
-      final val = _getValue(sortedLogs[i], vitalType);
+      final log = sortedLogs[i];
+
+      // [FIX] Handle nullable boolean in condition
+      if (_hideMotionData && (log.motion ?? false)) {
+        continue;
+      }
+
+      final val = _getValue(log, vitalType);
       if (val != null && val > 0) {
         spots.add(FlSpot(i.toDouble(), val));
       }
     }
 
-    if (spots.isEmpty) return const Center(child: Text("Not enough data"));
+    if (spots.isEmpty) {
+      return const Center(child: Text("Data hidden due to motion filter"));
+    }
 
     return LineChart(
       LineChartData(

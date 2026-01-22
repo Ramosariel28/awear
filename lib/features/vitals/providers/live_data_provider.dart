@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart'; // For debugPrint
+import 'package:flutter/foundation.dart';
 import 'package:isar/isar.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -12,24 +12,40 @@ import '../../users/providers/user_provider.dart';
 
 part 'live_data_provider.g.dart';
 
-// --- DASHBOARD HELPER---
+// [HELPER] Create a default empty packet to prevent null errors
+SerialPacket _createEmptyPacket() {
+  return SerialPacket(
+    id: 0,
+    heartRate: 0,
+    oxygen: 0,
+    temperature: 0,
+    stress: 0,
+    motion: false,
+    rssi: 0,
+    sender: '',
+  );
+}
+
+// --- DASHBOARD HELPER ---
 @riverpod
 Stream<SerialPacket> selectedUserLiveVitals(SelectedUserLiveVitalsRef ref) {
   final selectedId = ref.watch(selectedUserIdProvider);
-  if (selectedId == null) return const Stream.empty();
 
-  // Check pairing to ensure we don't show ghost data
+  if (selectedId == null) return Stream.value(_createEmptyPacket());
+
   final userAsync = ref.watch(userNotifierProvider);
   final user = userAsync.valueOrNull
       ?.where((u) => u.id == selectedId)
       .firstOrNull;
 
   if (user == null || user.pairedDeviceMacAddress == null) {
-    return const Stream.empty();
+    return Stream.value(_createEmptyPacket());
   }
 
-  // ignore: deprecated_member_use
-  return ref.watch(liveVitalStreamProvider(selectedId).stream);
+  // Watch the provider for the specific User ID
+  final asyncValue = ref.watch(liveVitalStreamProvider(selectedId));
+
+  return Stream.value(asyncValue.value ?? _createEmptyPacket());
 }
 
 // --- HISTORY FETCHING ---
@@ -38,125 +54,84 @@ Stream<List<VitalLogEntity>> vitalHistory(
   VitalHistoryRef ref,
   int userId,
 ) async* {
-  // Await the FUTURE to ensure Isar is ready before querying
   final isar = await ref.watch(isarProvider.future);
 
-  yield* isar.vitalLogEntitys
+  final stream = isar.vitalLogEntitys
       .filter()
       .userIdEqualTo(userId)
       .sortByTimestampDesc()
       .limit(50)
       .watch(fireImmediately: true);
+
+  yield* stream;
 }
 
-// --- MAIN LOGIC ---
+// --- LIVE DATA LOGIC ---
 @riverpod
-Stream<SerialPacket> liveVitalStream(
-  LiveVitalStreamRef ref,
-  int userId,
-) async* {
-  // 1. Get User Info
-  final userAsync = ref.watch(userNotifierProvider);
-  final user = userAsync.valueOrNull?.where((u) => u.id == userId).firstOrNull;
-
-  if (user == null || user.pairedDeviceMacAddress == null) {
-    yield* Stream.empty();
-    return;
-  }
-  final targetMac = user.pairedDeviceMacAddress!;
-
-  // 2. Wait for Isar AND Get Sync Service
-  final isar = await ref.watch(isarProvider.future);
-  final syncService = ref.read(syncServiceProvider); // [NEW] Get Sync Service
-
-  // 3. Fetch initial history (Optional: show last known data)
-  final lastLog = await isar.vitalLogEntitys
-      .filter()
-      .userIdEqualTo(userId)
-      .sortByTimestampDesc()
-      .findFirst();
-
-  if (lastLog != null) {
-    yield SerialPacket(
-      sender: targetMac,
-      rssi: 0,
-      id: 0,
-      heartRate: lastLog.hr,
-      oxygen: lastLog.oxy,
-      respirationRate: lastLog.rr,
-      temperature: lastLog.temp,
-      stress: lastLog.stress,
-      motion: lastLog.motion ?? false,
-    );
-  }
-
-  // 4. Start Listening
-  final packetStream = ref.watch(packetStreamProvider.notifier).stream;
-
-  // Cache variables for Local Saving
-  SerialPacket? _lastSavedPacket;
-  DateTime? _lastSavedTime;
-
-  // [NEW] Cache variable for Cloud Throttling
+class LiveVitalStream extends _$LiveVitalStream {
   DateTime? _lastCloudUploadTime;
+  DateTime? _lastLocalSaveTime; // [NEW] Throttle for local DB too
 
-  await for (final packet in packetStream) {
-    if (packet.sender == targetMac) {
-      bool isDuplicate = false;
+  SerialPacket? _lastValidPacket;
+  SerialPacket?
+  _lastProcessedPacket; // [NEW] Prevents duplicate saves on rebuild
 
-      // [LOGIC] Smart De-duplication (Local)
-      if (_lastSavedPacket != null && _lastSavedTime != null) {
-        final msSinceLastSave = DateTime.now()
-            .difference(_lastSavedTime!)
-            .inMilliseconds;
+  @override
+  Stream<SerialPacket> build(int userId) async* {
+    // 1. Validate User
+    final userList = ref.watch(userNotifierProvider).valueOrNull ?? [];
+    final user = userList.where((u) => u.id == userId).firstOrNull;
 
-        // If the packet arrived within 1 second of the last one...
-        if (msSinceLastSave < 1000) {
-          // ...AND the critical values are EXACTLY the same...
-          if (packet.id == _lastSavedPacket!.id && // vital if you use IDs
-              packet.heartRate == _lastSavedPacket!.heartRate &&
-              packet.oxygen == _lastSavedPacket!.oxygen &&
-              packet.stress == _lastSavedPacket!.stress &&
-              packet.temperature == _lastSavedPacket!.temperature) {
-            // ...then it is a Redundant Copy.
-            isDuplicate = true;
-          }
-        }
-      }
+    if (user == null || user.pairedDeviceMacAddress == null) {
+      yield _createEmptyPacket();
+      return;
+    }
 
-      if (!isDuplicate) {
-        // Update the Cache
-        _lastSavedPacket = packet;
-        _lastSavedTime = DateTime.now();
+    final isar = await ref.watch(isarProvider.future);
+    final syncService = ref.read(syncServiceProvider);
 
-        // A. Save to Local DB (Isar)
-        await _saveToHistory(isar, packet, userId);
+    // 2. Watch Serial Stream
+    final packetAsync = ref.watch(packetStreamProvider);
+    final packet = packetAsync.valueOrNull;
 
-        // B. [NEW] Upload to Cloud (Throttled)
-        // Only upload if 60 seconds have passed since the last upload
+    // 3. Filter Packet
+    if (packet != null && packet.sender == user.pairedDeviceMacAddress) {
+      _lastValidPacket = packet;
+
+      // [CRITICAL FIX] Check if we already processed this specific packet instance
+      // This prevents double-saving when 'userNotifierProvider' triggers a rebuild
+      if (packet != _lastProcessedPacket) {
+        _lastProcessedPacket = packet;
+
         final now = DateTime.now();
+
+        // A. Save to Local History (Throttled to 1 second)
+        // This prevents creating 100 records/sec on Desktop
+        if (_lastLocalSaveTime == null ||
+            now.difference(_lastLocalSaveTime!).inSeconds >= 1) {
+          _lastLocalSaveTime = now;
+          await _saveToHistory(isar, packet, userId);
+        }
+
+        // B. Upload to Cloud (Throttled to 5 seconds)
         if (_lastCloudUploadTime == null ||
-            now.difference(_lastCloudUploadTime!).inSeconds >= 60) {
+            now.difference(_lastCloudUploadTime!).inSeconds >= 5) {
           _lastCloudUploadTime = now;
 
-          // Use userId as the document ID for Firestore
-          syncService.uploadVital(userId.toString(), packet);
-
-          // Optional debug log
-          // print("CLOUD: Uploaded snapshot for User $userId");
+          final uploadId = user.firebaseId ?? userId.toString();
+          syncService.uploadVital(uploadId, packet);
         }
       }
-
-      // ALWAYS yield to UI (so the graph/numbers feel responsive)
-      yield packet;
     }
+
+    // 4. Yield Data
+    yield _lastValidPacket ?? _createEmptyPacket();
   }
 }
 
-// [FIX] Accept 'Isar' as an argument so we don't have to look it up again
+// [HELPER] Save to Local Database
 Future<void> _saveToHistory(Isar isar, SerialPacket packet, int userId) async {
   try {
-    // Filter out invalid/empty packets
     if ((packet.heartRate ?? 0) <= 0 && (packet.oxygen ?? 0) <= 0) {
       return;
     }
@@ -174,11 +149,16 @@ Future<void> _saveToHistory(Isar isar, SerialPacket packet, int userId) async {
     await isar.writeTxn(() async {
       await isar.vitalLogEntitys.put(log);
     });
-
-    // Uncomment this if you want to see confirmation in the console
-    // debugPrint("SAVED: HR=${packet.heartRate} for User $userId");
-  } catch (e, stack) {
-    debugPrint("CRITICAL DB ERROR: $e");
-    debugPrint(stack.toString());
+  } catch (e) {
+    debugPrint("History Save Error: $e");
   }
+}
+
+// [NEW] Manually clear history for a user
+@riverpod
+Future<void> clearUserHistory(ClearUserHistoryRef ref, int userId) async {
+  final isar = await ref.read(isarProvider.future);
+  await isar.writeTxn(() async {
+    await isar.vitalLogEntitys.filter().userIdEqualTo(userId).deleteAll();
+  });
 }
