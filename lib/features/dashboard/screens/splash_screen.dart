@@ -40,7 +40,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
   Future<void> _initApp() async {
     // 1. Minimum timer for logo animation
-    final tasks = <Future>[Future.delayed(const Duration(seconds: 3))];
+    final tasks = <Future>[Future.delayed(const Duration(seconds: 5))];
 
     // 2. ONLY wait for Hardware Scanner if we are on Desktop
     // Mobile does NOT need to scan for USB devices at startup
@@ -67,10 +67,12 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       final studentId = prefs.getString('student_id');
 
       if (studentId != null) {
+        if (!mounted) return;
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const StudentDashboardScreen()),
         );
       } else {
+        if (!mounted) return;
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const StudentLoginScreen()),
         );
@@ -98,11 +100,11 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                 width: 120,
                 height: 120,
                 decoration: BoxDecoration(
-                  color: Colors.blueGrey[900],
+                  color: Colors.red[700],
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.blue.withValues(alpha: 0.3),
+                      color: Colors.red.withValues(alpha: 0.3),
                       blurRadius: 20,
                       spreadRadius: 5,
                     ),
@@ -126,7 +128,16 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
               ),
               const SizedBox(height: 10),
               Text(
-                "AWARENESS YOU CAN WEAR, BECAUSE WE CARE",
+                "AWARENESS YOU CAN WEAR,",
+                style: GoogleFonts.montserrat(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 2,
+                  color: Colors.blueGrey[400],
+                ),
+              ),
+              Text(
+                "BECAUSE WE CARE",
                 style: GoogleFonts.montserrat(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,

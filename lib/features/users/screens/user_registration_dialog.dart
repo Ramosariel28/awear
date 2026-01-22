@@ -159,16 +159,15 @@ class _UserRegistrationDialogState
       final fullSectionName =
           "$_selectedStrand $_selectedYear-$_selectedSection";
       final notifier = ref.read(userNotifierProvider.notifier);
-      final syncService = ref.read(
-        syncServiceProvider,
-      ); // [NEW] Get Sync Service
+      final syncService = ref.read(syncServiceProvider);
 
       try {
         if (widget.userToEdit == null) {
           // --- CREATE MODE ---
 
-          // 1. Add to Local Database (Generates 'happy-lion' password)
-          await notifier.addUser(
+          // 1. Add to Local Database AND Capture the created user object immediately
+          // [FIX] We wait for the object return instead of searching for it later
+          final createdUser = await notifier.addUser(
             firstName: _firstNameCtrl.text,
             lastName: _lastNameCtrl.text,
             studentId: _studentIdCtrl.text,
@@ -182,13 +181,7 @@ class _UserRegistrationDialogState
             medicalInfo: _medicalCtrl.text.isEmpty ? null : _medicalCtrl.text,
           );
 
-          // 2. [NEW] Fetch the user we just created to get the password
-          final allUsers = await ref.read(userNotifierProvider.future);
-          final createdUser = allUsers.firstWhere(
-            (u) => u.studentId == _studentIdCtrl.text,
-          );
-
-          // 3. [NEW] Register in Cloud (Firebase)
+          // 2. Register in Cloud (Firebase) using the object we just got
           if (createdUser.generatedPassword != null) {
             final firebaseId = await syncService.registerUserInCloud(
               createdUser.studentId,
@@ -196,7 +189,7 @@ class _UserRegistrationDialogState
               createdUser.generatedPassword!,
             );
 
-            // 4. [NEW] Save Firebase ID back to Local DB
+            // 3. Save Firebase ID back to Local DB
             await notifier.updateFirebaseId(createdUser.id, firebaseId);
           }
         } else {
@@ -214,7 +207,6 @@ class _UserRegistrationDialogState
             weight: double.tryParse(_weightCtrl.text),
             bloodType: _selectedBloodType,
             medicalInfo: _medicalCtrl.text.isEmpty ? null : _medicalCtrl.text,
-            // currentMacAddress is handled internally by provider now
           );
         }
 
@@ -448,7 +440,6 @@ class _UserRegistrationDialogState
                   ],
                 ),
 
-                // Blood Type Dropdown
                 DropdownButtonFormField<String>(
                   initialValue: _selectedBloodType,
                   decoration: const InputDecoration(

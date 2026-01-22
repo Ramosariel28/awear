@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // [REQUIRED] For SystemNavigator
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:gap/gap.dart'; // [Required]
 
 import '../../auth/screens/student_login_screen.dart';
 import '../../../core/providers.dart';
@@ -43,20 +44,17 @@ class _StudentDashboardScreenState
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    // [NEW] Intercept Back Button
     return PopScope(
-      canPop: false, // Disable default back action (closing app)
-      onPopInvoked: (didPop) async {
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
 
         if (_selectedIndex == 1) {
-          // 1. If on Chat, navigate back to Dashboard (Index 0)
           setState(() => _selectedIndex = 0);
         } else {
-          // 2. If on Dashboard, ask to Exit App
           final shouldExit = await _showExitConfirm();
           if (shouldExit) {
-            SystemNavigator.pop(); // Closes the app window
+            SystemNavigator.pop();
           }
         }
       },
@@ -75,7 +73,6 @@ class _StudentDashboardScreenState
           final userData = snapshot.data!.data() as Map<String, dynamic>? ?? {};
           final name = userData['name'] ?? 'Student';
           final role = userData['role'] ?? 'Student';
-          // final year = userData['yearLevel'] ?? '';
           final section = userData['section'] ?? '';
 
           final pages = [
@@ -95,7 +92,6 @@ class _StudentDashboardScreenState
                   children: [
                     Text(
                       "$role • $section",
-                      // "$role • $year - $section",
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.indigo[400],
@@ -125,6 +121,18 @@ class _StudentDashboardScreenState
               ],
             ),
             body: pages[_selectedIndex],
+            // [NEW] About Button
+            floatingActionButton:
+                _selectedIndex ==
+                    0 // Only show on Vitals tab
+                ? FloatingActionButton(
+                    heroTag: "mobile_about_btn",
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.indigo,
+                    onPressed: () => _showAboutDialog(context),
+                    child: const Icon(Icons.question_mark),
+                  )
+                : null,
             bottomNavigationBar: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('users')
@@ -196,7 +204,77 @@ class _StudentDashboardScreenState
     );
   }
 
-  // [NEW] Exit Confirmation Dialog
+  // [NEW] About Dialog
+  void _showAboutDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.info_outline, color: Colors.indigo),
+            Gap(10),
+            Text("About"),
+          ],
+        ),
+        content: const SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                "AWEAR 1.0.0",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+              Text(
+                "Awareness You Can Wear,",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontStyle: FontStyle.italic,
+                  color: Colors.grey,
+                ),
+              ),
+              Text(
+                "Because We Care",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontStyle: FontStyle.italic,
+                  color: Colors.grey,
+                ),
+              ),
+              Divider(height: 30),
+              Text(
+                "Brought to you by Group 5:",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              Gap(8),
+              Text("Alumbro, Mary Jellianne B."),
+              Text("Banio, Stephanie Grace L."),
+              Text("Baylas, Kizza S."),
+              Text("Diokno, Lance Gian G."),
+              Text("Sagritalo, Aicee Janelle M."),
+              Divider(height: 30),
+              Text(
+                "UPHSD Molino | A.Y. '25-'26",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              Gap(4),
+              Text(
+                "AWear: An IoT-Enabled Wearable for Real-Time Monitoring of Student Health in the UPHSD Molino Campus Clinic",
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Close"),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<bool> _showExitConfirm() async {
     return await showDialog(
           context: context,

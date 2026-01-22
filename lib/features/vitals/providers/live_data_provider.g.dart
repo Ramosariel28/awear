@@ -13,14 +13,14 @@ String _$selectedUserLiveVitalsHash() =>
 @ProviderFor(selectedUserLiveVitals)
 final selectedUserLiveVitalsProvider =
     AutoDisposeStreamProvider<SerialPacket>.internal(
-      selectedUserLiveVitals,
-      name: r'selectedUserLiveVitalsProvider',
-      debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
-          ? null
-          : _$selectedUserLiveVitalsHash,
-      dependencies: null,
-      allTransitiveDependencies: null,
-    );
+  selectedUserLiveVitals,
+  name: r'selectedUserLiveVitalsProvider',
+  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+      ? null
+      : _$selectedUserLiveVitalsHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
 
 typedef SelectedUserLiveVitalsRef = AutoDisposeStreamProviderRef<SerialPacket>;
 String _$vitalHistoryHash() => r'f51d9ad392876960f49f1f8467ae18e278acab46';
@@ -56,15 +56,21 @@ class VitalHistoryFamily extends Family<AsyncValue<List<VitalLogEntity>>> {
   const VitalHistoryFamily();
 
   /// See also [vitalHistory].
-  VitalHistoryProvider call(int userId) {
-    return VitalHistoryProvider(userId);
+  VitalHistoryProvider call(
+    int userId,
+  ) {
+    return VitalHistoryProvider(
+      userId,
+    );
   }
 
   @override
   VitalHistoryProvider getProviderOverride(
     covariant VitalHistoryProvider provider,
   ) {
-    return call(provider.userId);
+    return call(
+      provider.userId,
+    );
   }
 
   static const Iterable<ProviderOrFamily>? _dependencies = null;
@@ -86,19 +92,24 @@ class VitalHistoryFamily extends Family<AsyncValue<List<VitalLogEntity>>> {
 class VitalHistoryProvider
     extends AutoDisposeStreamProvider<List<VitalLogEntity>> {
   /// See also [vitalHistory].
-  VitalHistoryProvider(int userId)
-    : this._internal(
-        (ref) => vitalHistory(ref as VitalHistoryRef, userId),
-        from: vitalHistoryProvider,
-        name: r'vitalHistoryProvider',
-        debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
-            ? null
-            : _$vitalHistoryHash,
-        dependencies: VitalHistoryFamily._dependencies,
-        allTransitiveDependencies:
-            VitalHistoryFamily._allTransitiveDependencies,
-        userId: userId,
-      );
+  VitalHistoryProvider(
+    int userId,
+  ) : this._internal(
+          (ref) => vitalHistory(
+            ref as VitalHistoryRef,
+            userId,
+          ),
+          from: vitalHistoryProvider,
+          name: r'vitalHistoryProvider',
+          debugGetCreateSourceHash:
+              const bool.fromEnvironment('dart.vm.product')
+                  ? null
+                  : _$vitalHistoryHash,
+          dependencies: VitalHistoryFamily._dependencies,
+          allTransitiveDependencies:
+              VitalHistoryFamily._allTransitiveDependencies,
+          userId: userId,
+        );
 
   VitalHistoryProvider._internal(
     super._createNotifier, {
@@ -175,15 +186,21 @@ class ClearUserHistoryFamily extends Family<AsyncValue<void>> {
   const ClearUserHistoryFamily();
 
   /// See also [clearUserHistory].
-  ClearUserHistoryProvider call(int userId) {
-    return ClearUserHistoryProvider(userId);
+  ClearUserHistoryProvider call(
+    int userId,
+  ) {
+    return ClearUserHistoryProvider(
+      userId,
+    );
   }
 
   @override
   ClearUserHistoryProvider getProviderOverride(
     covariant ClearUserHistoryProvider provider,
   ) {
-    return call(provider.userId);
+    return call(
+      provider.userId,
+    );
   }
 
   static const Iterable<ProviderOrFamily>? _dependencies = null;
@@ -204,19 +221,24 @@ class ClearUserHistoryFamily extends Family<AsyncValue<void>> {
 /// See also [clearUserHistory].
 class ClearUserHistoryProvider extends AutoDisposeFutureProvider<void> {
   /// See also [clearUserHistory].
-  ClearUserHistoryProvider(int userId)
-    : this._internal(
-        (ref) => clearUserHistory(ref as ClearUserHistoryRef, userId),
-        from: clearUserHistoryProvider,
-        name: r'clearUserHistoryProvider',
-        debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
-            ? null
-            : _$clearUserHistoryHash,
-        dependencies: ClearUserHistoryFamily._dependencies,
-        allTransitiveDependencies:
-            ClearUserHistoryFamily._allTransitiveDependencies,
-        userId: userId,
-      );
+  ClearUserHistoryProvider(
+    int userId,
+  ) : this._internal(
+          (ref) => clearUserHistory(
+            ref as ClearUserHistoryRef,
+            userId,
+          ),
+          from: clearUserHistoryProvider,
+          name: r'clearUserHistoryProvider',
+          debugGetCreateSourceHash:
+              const bool.fromEnvironment('dart.vm.product')
+                  ? null
+                  : _$clearUserHistoryHash,
+          dependencies: ClearUserHistoryFamily._dependencies,
+          allTransitiveDependencies:
+              ClearUserHistoryFamily._allTransitiveDependencies,
+          userId: userId,
+        );
 
   ClearUserHistoryProvider._internal(
     super._createNotifier, {
@@ -273,8 +295,7 @@ mixin ClearUserHistoryRef on AutoDisposeFutureProviderRef<void> {
 }
 
 class _ClearUserHistoryProviderElement
-    extends AutoDisposeFutureProviderElement<void>
-    with ClearUserHistoryRef {
+    extends AutoDisposeFutureProviderElement<void> with ClearUserHistoryRef {
   _ClearUserHistoryProviderElement(super.provider);
 
   @override
@@ -287,7 +308,9 @@ abstract class _$LiveVitalStream
     extends BuildlessAutoDisposeStreamNotifier<SerialPacket> {
   late final int userId;
 
-  Stream<SerialPacket> build(int userId);
+  Stream<SerialPacket> build(
+    int userId,
+  );
 }
 
 /// See also [LiveVitalStream].
@@ -300,15 +323,21 @@ class LiveVitalStreamFamily extends Family<AsyncValue<SerialPacket>> {
   const LiveVitalStreamFamily();
 
   /// See also [LiveVitalStream].
-  LiveVitalStreamProvider call(int userId) {
-    return LiveVitalStreamProvider(userId);
+  LiveVitalStreamProvider call(
+    int userId,
+  ) {
+    return LiveVitalStreamProvider(
+      userId,
+    );
   }
 
   @override
   LiveVitalStreamProvider getProviderOverride(
     covariant LiveVitalStreamProvider provider,
   ) {
-    return call(provider.userId);
+    return call(
+      provider.userId,
+    );
   }
 
   static const Iterable<ProviderOrFamily>? _dependencies = null;
@@ -327,23 +356,24 @@ class LiveVitalStreamFamily extends Family<AsyncValue<SerialPacket>> {
 }
 
 /// See also [LiveVitalStream].
-class LiveVitalStreamProvider
-    extends
-        AutoDisposeStreamNotifierProviderImpl<LiveVitalStream, SerialPacket> {
+class LiveVitalStreamProvider extends AutoDisposeStreamNotifierProviderImpl<
+    LiveVitalStream, SerialPacket> {
   /// See also [LiveVitalStream].
-  LiveVitalStreamProvider(int userId)
-    : this._internal(
-        () => LiveVitalStream()..userId = userId,
-        from: liveVitalStreamProvider,
-        name: r'liveVitalStreamProvider',
-        debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
-            ? null
-            : _$liveVitalStreamHash,
-        dependencies: LiveVitalStreamFamily._dependencies,
-        allTransitiveDependencies:
-            LiveVitalStreamFamily._allTransitiveDependencies,
-        userId: userId,
-      );
+  LiveVitalStreamProvider(
+    int userId,
+  ) : this._internal(
+          () => LiveVitalStream()..userId = userId,
+          from: liveVitalStreamProvider,
+          name: r'liveVitalStreamProvider',
+          debugGetCreateSourceHash:
+              const bool.fromEnvironment('dart.vm.product')
+                  ? null
+                  : _$liveVitalStreamHash,
+          dependencies: LiveVitalStreamFamily._dependencies,
+          allTransitiveDependencies:
+              LiveVitalStreamFamily._allTransitiveDependencies,
+          userId: userId,
+        );
 
   LiveVitalStreamProvider._internal(
     super._createNotifier, {
@@ -358,8 +388,12 @@ class LiveVitalStreamProvider
   final int userId;
 
   @override
-  Stream<SerialPacket> runNotifierBuild(covariant LiveVitalStream notifier) {
-    return notifier.build(userId);
+  Stream<SerialPacket> runNotifierBuild(
+    covariant LiveVitalStream notifier,
+  ) {
+    return notifier.build(
+      userId,
+    );
   }
 
   @override
@@ -380,7 +414,7 @@ class LiveVitalStreamProvider
 
   @override
   AutoDisposeStreamNotifierProviderElement<LiveVitalStream, SerialPacket>
-  createElement() {
+      createElement() {
     return _LiveVitalStreamProviderElement(this);
   }
 
@@ -404,14 +438,12 @@ mixin LiveVitalStreamRef on AutoDisposeStreamNotifierProviderRef<SerialPacket> {
 }
 
 class _LiveVitalStreamProviderElement
-    extends
-        AutoDisposeStreamNotifierProviderElement<LiveVitalStream, SerialPacket>
-    with LiveVitalStreamRef {
+    extends AutoDisposeStreamNotifierProviderElement<LiveVitalStream,
+        SerialPacket> with LiveVitalStreamRef {
   _LiveVitalStreamProviderElement(super.provider);
 
   @override
   int get userId => (origin as LiveVitalStreamProvider).userId;
 }
-
 // ignore_for_file: type=lint
 // ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member

@@ -23,7 +23,7 @@ final isarProvider = FutureProvider<Isar>.internal(
   allTransitiveDependencies: null,
 );
 
-typedef IsarRef = Ref<Isar>;
+typedef IsarRef = FutureProviderRef<Isar>;
 String _$serialServiceHash() => r'837166a7369f34e949a0415019d56afacf85f6c6';
 
 /// 2. SERIAL SERVICE PROVIDER
@@ -41,7 +41,7 @@ final serialServiceProvider = Provider<SerialServiceContract>.internal(
   allTransitiveDependencies: null,
 );
 
-typedef SerialServiceRef = Ref<SerialServiceContract>;
+typedef SerialServiceRef = ProviderRef<SerialServiceContract>;
 String _$syncServiceHash() => r'693d115d028caa441308df23cd1076bbbce29b04';
 
 /// 3. SYNC SERVICE PROVIDER
@@ -59,6 +59,6 @@ final syncServiceProvider = Provider<SyncService>.internal(
   allTransitiveDependencies: null,
 );
 
-typedef SyncServiceRef = Ref<SyncService>;
+typedef SyncServiceRef = ProviderRef<SyncService>;
 // ignore_for_file: type=lint
 // ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member

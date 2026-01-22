@@ -297,7 +297,9 @@ class DeviceManager extends _$DeviceManager {
       await dev.subscription?.cancel();
       dev.reader.close();
       if (dev.port.isOpen) dev.port.close();
-    } catch (e) {}
+    } catch (e) {
+      // Ignore errors during shutdown
+    }
   }
 
   void _updateState() {
@@ -346,7 +348,7 @@ class DeviceManager extends _$DeviceManager {
 
       final packet = SerialPacket.fromJson(json);
 
-      if (packet.sender != null && device.macAddress == "Unknown") {
+      if (device.macAddress == "Unknown") {
         device.macAddress = packet.sender;
         _updateState();
       }

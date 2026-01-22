@@ -22,7 +22,7 @@ final availablePortsProvider = AutoDisposeStreamProvider<List<String>>.internal(
   allTransitiveDependencies: null,
 );
 
-typedef AvailablePortsRef = Ref<List<String>>;
+typedef AvailablePortsRef = AutoDisposeStreamProviderRef<List<String>>;
 String _$packetStreamHash() => r'c4dc465f90ac84cace4aefd4f7a73ea9750e78aa';
 
 /// 2. The Live Data Stream
@@ -32,14 +32,13 @@ String _$packetStreamHash() => r'c4dc465f90ac84cace4aefd4f7a73ea9750e78aa';
 @ProviderFor(PacketStream)
 final packetStreamProvider =
     StreamNotifierProvider<PacketStream, SerialPacket>.internal(
-      PacketStream.new,
-      name: r'packetStreamProvider',
-      debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
-          ? null
-          : _$packetStreamHash,
-      dependencies: null,
-      allTransitiveDependencies: null,
-    );
+  PacketStream.new,
+  name: r'packetStreamProvider',
+  debugGetCreateSourceHash:
+      const bool.fromEnvironment('dart.vm.product') ? null : _$packetStreamHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
 
 typedef _$PacketStream = StreamNotifier<SerialPacket>;
 // ignore_for_file: type=lint

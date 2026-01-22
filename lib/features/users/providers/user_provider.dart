@@ -5,7 +5,7 @@ import 'package:isar/isar.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../core/database/user_entity.dart';
-import '../../../core/database/vital_log_entity.dart'; // [Required]
+import '../../../core/database/vital_log_entity.dart';
 import '../../../core/providers.dart';
 
 part 'user_provider.g.dart';
@@ -23,9 +23,8 @@ class UserNotifier extends _$UserNotifier {
     return "${pair.first.toLowerCase()}-${pair.second.toLowerCase()}";
   }
 
-  // --- CRUD METHODS ---
-
-  Future<void> addUser({
+  // --- 1. ADD USER (Returns the created user now) ---
+  Future<UserEntity> addUser({
     required String firstName,
     required String lastName,
     required String studentId,
@@ -66,8 +65,12 @@ class UserNotifier extends _$UserNotifier {
     await db.writeTxn(() async {
       await db.userEntitys.put(newUser);
     });
+
+    // [FIX] Return the user object so UI doesn't have to search for it
+    return newUser;
   }
 
+  // --- 2. UPDATE USER ---
   Future<void> updateUser({
     required int id,
     required String firstName,
@@ -125,24 +128,21 @@ class UserNotifier extends _$UserNotifier {
     }
   }
 
+  // --- DELETE USER ---
   Future<void> deleteUser(int id) async {
     final db = await ref.read(isarProvider.future);
 
-    // 1. Get user details before deleting
     final userToDelete = await db.userEntitys.get(id);
     if (userToDelete == null) return;
 
     final firebaseId = userToDelete.firebaseId;
 
     await db.writeTxn(() async {
-      // 2. Cascade Delete: Delete Local Vitals
       await db.vitalLogEntitys.filter().userIdEqualTo(id).deleteAll();
 
-      // 3. Delete Local User
       await db.userEntitys.delete(id);
     });
 
-    // 4. Delete from Cloud
     if (firebaseId != null) {
       try {
         await FirebaseFirestore.instance
@@ -156,40 +156,28 @@ class UserNotifier extends _$UserNotifier {
     }
   }
 
-  // [UPDATED] Clear History (Local + Cloud)
+  // --- CLEAR HISTORY ---
   Future<void> clearUserHistory(int userId) async {
     final db = await ref.read(isarProvider.future);
-
-    // 1. Get User to find Firebase ID
     final user = await db.userEntitys.get(userId);
 
-    // 2. Clear Local DB
     await db.writeTxn(() async {
       await db.vitalLogEntitys.filter().userIdEqualTo(userId).deleteAll();
     });
 
-    // 3. Clear Cloud DB
     if (user?.firebaseId != null) {
       try {
         final userDoc = FirebaseFirestore.instance
             .collection('users')
             .doc(user!.firebaseId);
-
-        // A. Delete 'latest' vital card data
         await userDoc.collection('vitals').doc('latest').delete();
 
-        // B. Delete all documents in 'history' collection
-        // Note: Firestore requires deleting docs individually
         final historySnapshot = await userDoc.collection('history').get();
         final batch = FirebaseFirestore.instance.batch();
-
         for (final doc in historySnapshot.docs) {
           batch.delete(doc.reference);
         }
-
         await batch.commit();
-        // ignore: avoid_print
-        print("Cloud history cleared for ${user.firstName}");
       } catch (e) {
         // ignore: avoid_print
         print("Cloud history clear failed: $e");
@@ -198,7 +186,6 @@ class UserNotifier extends _$UserNotifier {
   }
 
   // --- HELPERS ---
-
   Future<void> updateFirebaseId(int localId, String fId) async {
     final db = await ref.read(isarProvider.future);
     UserEntity? user;
@@ -236,7 +223,6 @@ class UserNotifier extends _$UserNotifier {
   }
 
   // --- PAIRING ---
-
   Future<void> unpairUser(int userId) async {
     final db = await ref.read(isarProvider.future);
     await db.writeTxn(() async {
@@ -284,7 +270,6 @@ class UserNotifier extends _$UserNotifier {
   }
 
   // --- REGENERATE PASSWORD ---
-
   Future<void> regenerateUserPassword(int userId) async {
     final db = await ref.read(isarProvider.future);
     final syncService = ref.read(syncServiceProvider);

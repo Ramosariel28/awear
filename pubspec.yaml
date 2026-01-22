@@ -1,7 +1,7 @@
 name: awear
-description: "Medical Dashboard Partnered with a Wireless Biometric Bracelet"
+description: "Medical Desktop and Mobile Dashboard Partnered with a Wireless Biometric Bracelet"
 publish_to: 'none'
-version: 0.8.0+1
+version: 1.0.0+1
 
 environment:
   sdk: '>=3.10.0 <4.0.0' # Targets Dart 3.10+ / Flutter 3.38+
@@ -55,5 +55,12 @@ dev_dependencies:
   isar_generator: 3.1.0+1
   riverpod_generator: 2.4.0 
   json_serializable: 6.8.0
+  flutter_launcher_icons: ^0.13.1
 
   analyzer: ">=5.13.0 <6.0.0"
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: false
+  image_path: "assets/awear_logo.png"
+  min_sdk_android: 21
