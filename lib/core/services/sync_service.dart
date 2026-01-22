@@ -15,10 +15,10 @@ class SyncService {
           email: "admin@awear.system",
           password: "admin123",
         );
-        print("SYNC: Admin Logged In");
+        // print("SYNC: Admin Logged In");
       }
     } catch (e) {
-      print("SYNC: Admin login failed: $e");
+      // print("SYNC: Admin login failed: $e");
     }
   }
 
@@ -71,7 +71,7 @@ class SyncService {
           .collection('history')
           .add(data);
     } catch (e) {
-      print("SYNC: Upload failed: $e");
+      // print("SYNC: Upload failed: $e");
     }
   }
 

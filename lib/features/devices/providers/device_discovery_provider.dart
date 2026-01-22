@@ -58,7 +58,7 @@ class DeviceManager extends _$DeviceManager {
 
   @override
   Future<List<ConnectedDevice>> build() async {
-    print("CORE: Device Manager Started");
+    // print("CORE: Device Manager Started");
     _isDisposed = false;
 
     await Future.delayed(const Duration(milliseconds: 3000));
@@ -97,7 +97,7 @@ class DeviceManager extends _$DeviceManager {
   }) async {
     _ignoredPorts.add(portName);
     if (permanent) {
-      print("CORE: Permanently blacklisting $portName.");
+      // print("CORE: Permanently blacklisting $portName.");
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getStringList('ignored_serial_ports') ?? [];
       if (!saved.contains(portName)) {
@@ -155,7 +155,7 @@ class DeviceManager extends _$DeviceManager {
           continue;
         }
         if (_ignoredPorts.contains(portName)) continue;
-        print("CORE: New port detected: $portName. Connecting...");
+        // print("CORE: New port detected: $portName. Connecting...");
         _connectAndIdentify(portName);
       }
     }
@@ -218,7 +218,7 @@ class DeviceManager extends _$DeviceManager {
         },
         onError: (err) {
           if (!err.toString().contains("errno = 0")) {
-            print("CORE: Error on $portName: $err");
+            // print("CORE: Error on $portName: $err");
           }
           _forceDisconnect(device);
         },
@@ -337,7 +337,7 @@ class DeviceManager extends _$DeviceManager {
 
         final mac = json['mac'].toString();
         if (mac.isNotEmpty) {
-          print("CORE: Captured MAC for ${device.portName}: $mac");
+          // print("CORE: Captured MAC for ${device.portName}: $mac");
           device.macAddress = mac;
         }
         _updateState();
@@ -357,7 +357,7 @@ class DeviceManager extends _$DeviceManager {
 
       _packetsReceived++;
       if (_packetsReceived % 50 == 0) {
-        print("CORE STATUS: $_packetsReceived packets.");
+        // print("CORE STATUS: $_packetsReceived packets.");
       }
     } catch (e) {
       // Ignore
@@ -370,10 +370,10 @@ class DeviceManager extends _$DeviceManager {
         .firstOrNull;
     if (senderDev != null) {
       final cmd = "PAIR:$receiverMac\n";
-      print("CORE: Sending pair command: $cmd");
+      // print("CORE: Sending pair command: $cmd");
       senderDev.port.write(Uint8List.fromList(cmd.codeUnits));
     } else {
-      print("CORE: Cannot pair - Sender device not found.");
+      // print("CORE: Cannot pair - Sender device not found.");
     }
   }
 }

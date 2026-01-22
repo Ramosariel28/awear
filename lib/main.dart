@@ -20,11 +20,11 @@ void main() async {
       FirebaseFirestore.instance.settings = const Settings(
         persistenceEnabled: false,
       );
-      print(
-        "WINDOWS: Firestore persistence disabled to prevent threading issues.",
-      );
+      // print(
+      //   "WINDOWS: Firestore persistence disabled to prevent threading issues.",
+      // );
     } catch (e) {
-      print("WINDOWS WARNING: Could not disable persistence: $e");
+      // print("WINDOWS WARNING: Could not disable persistence: $e");
     }
   }
   // ------------------------------------
@@ -37,9 +37,9 @@ void main() async {
 Future clearFirestoreCache() async {
   try {
     await FirebaseFirestore.instance.clearPersistence();
-    print("Firestore cache cleared successfully.");
+    //print("Firestore cache cleared successfully.");
   } catch (e) {
-    print("Failed to clear Firestore cache: $e");
+    // print("Failed to clear Firestore cache: $e");
   }
 }
 
