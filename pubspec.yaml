@@ -1,7 +1,7 @@
 name: awear
 description: "Medical Desktop and Mobile Dashboard Partnered with a Wireless Biometric Bracelet"
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.1+1
 
 environment:
   sdk: '>=3.10.0 <4.0.0' # Targets Dart 3.10+ / Flutter 3.38+

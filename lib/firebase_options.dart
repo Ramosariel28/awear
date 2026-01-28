@@ -58,12 +58,12 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyAFSZQQJX6D_FfzwVeJziuUmYkkQMNwqeg',
+    apiKey:
+        'AIzaSyAFSZQQJX6D_FfzwVeJziuUmYkkQMNwqeg', //TODO: Replace API Key ahre and also on android/app/google-services.json
     appId: '1:19722495711:web:52fe21bad3afa9fa4cab6a',
     messagingSenderId: '19722495711',
     projectId: 'awear-system',
     authDomain: 'awear-system.firebaseapp.com',
     storageBucket: 'awear-system.firebasestorage.app',
   );
-
 }
